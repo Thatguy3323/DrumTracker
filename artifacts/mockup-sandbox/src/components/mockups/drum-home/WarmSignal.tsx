@@ -34,11 +34,11 @@ export function WarmSignal() {
     <div className="min-h-screen analog-bg text-[#ffedd5] font-sans relative overflow-x-hidden flex flex-col selection:bg-[#FF9500]/30">
       {/* Background Image Overlay */}
       <div 
-        className="absolute inset-0 z-0 opacity-15 mix-blend-lighten pointer-events-none transition-opacity duration-1000"
+        className="absolute inset-0 z-0 opacity-35 mix-blend-lighten pointer-events-none transition-opacity duration-1000"
         style={{
-          backgroundImage: 'url(/__mockup/images/analog-studio.png)',
+          backgroundImage: 'url(/__mockup/images/drum-hero.png)',
           backgroundSize: 'cover',
-          backgroundPosition: 'center',
+          backgroundPosition: 'center bottom',
         }}
       />
       

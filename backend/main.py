@@ -49,11 +49,17 @@ _cleanup_lock = asyncio.Lock()
 def _run_cleanup():
     """Synchronous cleanup worker — called from a thread pool so it never blocks the event loop."""
     try:
-        orphaned, old = cleanup_orphaned_uploads(max_age_days=30, orphan_grace_seconds=600)
-        if orphaned or old:
-            logger.info("Upload cleanup: removed %d orphaned and %d old files.", orphaned, old)
+        orphaned, old, pruned_audio, pruned_detections = cleanup_orphaned_uploads(
+            max_age_days=30, orphan_grace_seconds=600
+        )
+        if orphaned or old or pruned_audio or pruned_detections:
+            logger.info(
+                "Cleanup: removed %d orphaned files, %d old files, "
+                "%d audio_sessions rows, %d detection_sessions rows.",
+                orphaned, old, pruned_audio, pruned_detections,
+            )
         else:
-            logger.debug("Upload cleanup: nothing to remove.")
+            logger.debug("Cleanup: nothing to remove.")
     except Exception:
         logger.exception("Upload cleanup failed.")
 

@@ -130,7 +130,7 @@ def list_audio_ids_in_db() -> set[str]:
 def cleanup_orphaned_uploads(
     max_age_days: int = 30,
     orphan_grace_seconds: int = 600,
-) -> tuple[int, int]:
+) -> tuple[int, int, int, int]:
     """
     Remove files from UPLOADS_DIR that are either:
       - Not referenced by any row in audio_sessions AND older than
@@ -138,9 +138,15 @@ def cleanup_orphaned_uploads(
         that have been written to disk but not yet committed to the DB.
       - Older than max_age_days days (regardless of DB presence).
 
-    Returns (orphaned_count, old_count) of files removed.
+    Also prunes stale database rows:
+      - audio_sessions rows older than max_age_days are deleted.
+      - detection_sessions rows whose audio_id no longer exists in
+        audio_sessions are deleted (cascade cleanup).
+
+    Returns (orphaned_files, old_files, pruned_audio_rows, pruned_detection_rows).
     """
     import time
+    from datetime import timezone
 
     known_ids = list_audio_ids_in_db()
     now = time.time()
@@ -168,7 +174,45 @@ def cleanup_orphaned_uploads(
             filepath.unlink(missing_ok=True)
             old += 1
 
-    return orphaned, old
+    # --- DB row pruning ---
+    pruned_audio = 0
+    pruned_detections = 0
+
+    age_cutoff_dt = datetime.utcfromtimestamp(age_cutoff)
+
+    with SessionLocal() as db:
+        # 1. Delete audio_sessions rows older than the retention cutoff.
+        old_audio_rows = (
+            db.query(AudioSessionRow)
+            .filter(AudioSessionRow.created_at < age_cutoff_dt)
+            .all()
+        )
+        old_audio_ids = {r.audio_id for r in old_audio_rows}
+        if old_audio_ids:
+            db.query(AudioSessionRow).filter(
+                AudioSessionRow.audio_id.in_(old_audio_ids)
+            ).delete(synchronize_session=False)
+            pruned_audio = len(old_audio_ids)
+
+        # 2. Delete detection_sessions rows whose audio_id no longer exists
+        #    in audio_sessions (covers rows just pruned above and any
+        #    previously orphaned entries).
+        remaining_audio_ids_query = db.query(AudioSessionRow.audio_id)
+        orphaned_detections = (
+            db.query(DetectionSessionRow)
+            .filter(DetectionSessionRow.audio_id.notin_(remaining_audio_ids_query))
+            .all()
+        )
+        if orphaned_detections:
+            detection_ids = [r.detection_id for r in orphaned_detections]
+            db.query(DetectionSessionRow).filter(
+                DetectionSessionRow.detection_id.in_(detection_ids)
+            ).delete(synchronize_session=False)
+            pruned_detections = len(detection_ids)
+
+        db.commit()
+
+    return orphaned, old, pruned_audio, pruned_detections
 
 
 def load_detection_session(detection_id: str) -> dict | None:

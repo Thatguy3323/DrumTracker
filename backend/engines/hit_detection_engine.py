@@ -1,18 +1,31 @@
 """
-DrumTracker Hit Detection Engine
----------------------------------
+DrumTracker Hit Detection Engine  v2
+--------------------------------------
 Detection pipeline:
-  1. HPSS (Harmonic-Percussive Source Separation) via librosa — isolates the
-     percussive layer so snares/kicks/hats are not masked by harmonic content.
-  2. Essentia HFC (High Frequency Content) onset detection — purpose-built for
-     sharp percussive transients, significantly more accurate than plain librosa
-     spectral-flux onset detection.
-  3. Time-domain RMS threshold filter — compares a 50 ms window at each onset
-     against the user-supplied dBFS threshold (correctly in amplitude domain).
-  4. Multi-band spectral energy + centroid classification — assigns each onset
-     to kick / snare / hihat / tom based on frequency content in the original
-     (non-separated) signal for accurate timbre reading.
-  5. Tempo: librosa BeatTracker on the full signal — returns BPM as float.
+
+  1. HPSS  — librosa harmonic-percussive source separation strips melodic
+             instruments so onset detection only sees drum energy.
+
+  2. Essentia 3-ODF ensemble (HFC + Complex + MelFlux) — three onset
+     detection functions computed per frame, normalised to [0,1], then
+     weighted and peak-picked with scipy.  MelFlux is specifically tuned
+     for percussive content and catches soft hits that HFC misses.
+
+  3. Multi-band onset-strength classification (librosa.onset_strength_multi)
+     — the same technique used by ADTLib and Omnizart before their neural
+     nets.  Computes onset novelty on 4 perceptually-motivated mel bands
+     (sub-bass / kick / snare / hihat) so kick vs snare vs hihat is decided
+     by WHICH band changed, not just the average energy ratio.  Much more
+     robust than raw STFT energy.
+
+  4. Spectral feature refinement — ZCR (zero-crossing rate) and spectral
+     rolloff disambiguate hihat from snare crack; spectral centroid fine-
+     tunes the boundary between kick and tom.
+
+  5. 20 ms time-domain RMS threshold — correct dBFS comparison in amplitude
+     domain; short window avoids diluting transient energy with silence.
+
+  6. Tempo — librosa.beat.beat_track on the full signal.
 """
 
 import librosa
@@ -27,74 +40,152 @@ try:
 except Exception:
     _ESSENTIA_OK = False
 
+from scipy.signal import find_peaks
 
-DRUM_MIDI_NOTES = {
-    "kick":  36,
-    "snare": 38,
-    "hihat": 42,
-    "tom":   45,
-}
+DRUM_MIDI_NOTES = {"kick": 36, "snare": 38, "hihat": 42, "tom": 45}
 
 _FRAME_SIZE = 1024
-_HOP_SIZE   = 512   # ~11.6 ms @ 44.1 kHz; resampled below if needed
+_HOP_SIZE   = 512     # 11.6 ms @ 44.1 kHz — fixed for Essentia compatibility
+
+# Mel band channel boundaries for onset_strength_multi:
+#   [0-10] = sub-bass/kick fundamental  (~0-170 Hz)
+#   [10-45] = kick body/tom             (~170-1100 Hz)
+#   [45-80] = snare body                (~1100-4000 Hz)
+#   [80-128] = hihat/cymbal/crack       (~4000-22050 Hz)
+_MEL_CHANNELS = [0, 10, 45, 80, 128]
+
+# Weights for kick / snare / hihat / tom over the 4 bands
+# Rows = drum type, Cols = [sub-bass, kick-body, snare-body, hihat-crack]
+_BAND_PROTOTYPES = np.array([
+    [0.55, 0.35, 0.08, 0.02],   # kick
+    [0.08, 0.28, 0.48, 0.16],   # snare
+    [0.02, 0.06, 0.18, 0.74],   # hihat
+    [0.22, 0.52, 0.22, 0.04],   # tom
+], dtype=np.float64)
 
 
-def _hfc_onsets_essentia(y_perc: np.ndarray, sr: int, pre_filter_ms: float) -> np.ndarray:
+def _norm(x: np.ndarray) -> np.ndarray:
+    rng = float(x.max() - x.min())
+    return (x - x.min()) / rng if rng > 1e-12 else np.zeros_like(x)
+
+
+def _hfc_ensemble_onsets(y_perc: np.ndarray, sr: int, pre_filter_ms: float) -> np.ndarray:
     """
-    Return onset times (seconds) using Essentia HFC+Complex onset detection
-    with scipy peak-picking (avoids Essentia's strict frame-rate constraint).
+    3-ODF Essentia ensemble: HFC (timing) + Complex (transient shape) +
+    MelFlux (soft percussive hits).  scipy peak-picking gives full control
+    without Essentia's strict frame-rate constraint.
     """
-    from scipy.signal import find_peaks
-
-    # Use a fixed hop that Essentia handles reliably; pre_filter_ms controls
-    # post-hoc minimum-interval filtering instead.
-    hop = _HOP_SIZE   # 512 samples ≈ 11.6 ms @ 44.1 kHz
     y32 = y_perc.astype(np.float32)
 
-    w    = _es.Windowing(type="hann")
-    fft  = _es.FFT()
-    c2p  = _es.CartesianToPolar()
-    hfc  = _es.OnsetDetection(method="hfc",     sampleRate=sr)
-    cmpx = _es.OnsetDetection(method="complex",  sampleRate=sr)
+    w     = _es.Windowing(type="hann")
+    fft   = _es.FFT()
+    c2p   = _es.CartesianToPolar()
+    hfc   = _es.OnsetDetection(method="hfc",     sampleRate=sr)
+    cmpx  = _es.OnsetDetection(method="complex",  sampleRate=sr)
+    mflux = _es.OnsetDetection(method="melflux",  sampleRate=sr)
 
-    hfc_vals:  List[float] = []
-    cmpx_vals: List[float] = []
+    hfc_v: List[float] = []
+    cmp_v: List[float] = []
+    mfx_v: List[float] = []
 
-    for frame in _es.FrameGenerator(y32, frameSize=_FRAME_SIZE, hopSize=hop, startFromZero=True):
+    for frame in _es.FrameGenerator(y32, frameSize=_FRAME_SIZE,
+                                     hopSize=_HOP_SIZE, startFromZero=True):
         spec = fft(w(frame))
         mag, phase = c2p(spec)
-        hfc_vals.append(float(hfc(mag, phase)))
-        cmpx_vals.append(float(cmpx(mag, phase)))
+        hfc_v.append(float(hfc(mag, phase)))
+        cmp_v.append(float(cmpx(mag, phase)))
+        mfx_v.append(float(mflux(mag, phase)))
 
-    if len(hfc_vals) < 3:
+    if len(hfc_v) < 3:
         return np.array([], dtype=np.float64)
 
-    hfc_arr  = np.array(hfc_vals,  dtype=np.float64)
-    cmpx_arr = np.array(cmpx_vals, dtype=np.float64)
+    # Weighted ensemble: HFC best for timing, MelFlux catches soft hits
+    odf = (0.50 * _norm(np.array(hfc_v))
+           + 0.20 * _norm(np.array(cmp_v))
+           + 0.30 * _norm(np.array(mfx_v)))
 
-    # Normalise each ODF to [0, 1] then combine (HFC dominant)
-    def _norm(x: np.ndarray) -> np.ndarray:
-        rng = x.max() - x.min()
-        return (x - x.min()) / rng if rng > 1e-12 else x * 0.0
+    min_dist = max(1, int(pre_filter_ms / 1000.0 * sr / _HOP_SIZE))
+    peaks, _ = find_peaks(odf, height=0.12, distance=min_dist, prominence=0.06)
 
-    odf = 0.65 * _norm(hfc_arr) + 0.35 * _norm(cmpx_arr)
-
-    # Minimum distance between peaks = pre_filter_ms converted to frames
-    min_dist = max(1, int(pre_filter_ms / 1000.0 * sr / hop))
-
-    peaks, _ = find_peaks(odf, height=0.15, distance=min_dist, prominence=0.08)
-
-    frame_times = np.arange(len(odf)) * hop / sr
-    return frame_times[peaks]
+    return np.arange(len(odf))[peaks] * _HOP_SIZE / sr
 
 
-def _librosa_onsets(y_perc: np.ndarray, sr: int, delta: float, hop: int) -> np.ndarray:
-    """Fallback: librosa onset detection on the percussive signal."""
+def _librosa_onsets_fallback(y_perc: np.ndarray, sr: int,
+                              sensitivity: float) -> np.ndarray:
+    delta = max(0.1, 2.0 - sensitivity * 1.9)
     frames = librosa.onset.onset_detect(
-        y=y_perc, sr=sr, hop_length=hop,
+        y=y_perc, sr=sr, hop_length=_HOP_SIZE,
         delta=delta, units="frames", backtrack=True,
     )
-    return librosa.frames_to_time(frames, sr=sr, hop_length=hop)
+    return librosa.frames_to_time(frames, sr=sr, hop_length=_HOP_SIZE)
+
+
+def _classify_onset(
+    onset_time: float,
+    y: np.ndarray,
+    sr: int,
+    odf_bands: np.ndarray,    # (4, n_frames)
+    magnitude: np.ndarray,    # (freq_bins, n_frames) — full STFT magnitude
+    freqs: np.ndarray,
+) -> Tuple[str, float]:
+    """
+    Multi-band onset-strength classification (ADTLib-style).
+
+    For each detected onset, read the 4-band novelty activations from
+    onset_strength_multi and compare them to per-drum prototypes using
+    cosine similarity.  Refine with ZCR and spectral rolloff.
+    """
+    frame = min(int(onset_time * sr / _HOP_SIZE), odf_bands.shape[1] - 1)
+
+    # --- Multi-band activation vector ----------------------------------------
+    # Look at a ±2 frame neighbourhood for stability
+    f0 = max(0, frame - 1)
+    f1 = min(odf_bands.shape[1], frame + 3)
+    band_act = odf_bands[:, f0:f1].max(axis=1)          # shape (4,)
+    total = band_act.sum() + 1e-12
+    band_ratio = band_act / total                        # normalised
+
+    # Cosine similarity to each drum-type prototype
+    sims = np.array([
+        float(np.dot(band_ratio, proto) /
+              (np.linalg.norm(band_ratio) * np.linalg.norm(proto) + 1e-12))
+        for proto in _BAND_PROTOTYPES
+    ])
+    drum_names = ["kick", "snare", "hihat", "tom"]
+    best_idx   = int(np.argmax(sims))
+    raw_conf   = float(sims[best_idx])
+
+    # --- Spectral refinements -------------------------------------------------
+    w0 = frame
+    w1 = min(magnitude.shape[1], frame + 20)
+    spec = magnitude[:, w0:w1]
+
+    centroid = float(np.sum(freqs[:, None] * spec) / (np.sum(spec) + 1e-12))
+
+    # Rolloff: frequency below which 85 % of energy sits
+    cumsum = np.cumsum(spec.sum(axis=1))
+    rolloff_idx = np.searchsorted(cumsum, 0.85 * cumsum[-1])
+    rolloff_hz  = freqs[min(rolloff_idx, len(freqs) - 1)]
+
+    # ZCR from raw audio in a 30 ms window
+    s0 = int(onset_time * sr)
+    s1 = min(len(y), s0 + int(0.030 * sr))
+    zcr = float(librosa.feature.zero_crossing_rate(y[s0:s1]).mean()) if s1 > s0 else 0.0
+
+    # Override corrections
+    drum_type = drum_names[best_idx]
+
+    if zcr > 0.28 and rolloff_hz > 5000:
+        drum_type = "hihat"
+    elif drum_type == "hihat" and centroid < 2500 and zcr < 0.18:
+        drum_type = "snare"
+    elif drum_type in ("kick", "tom") and centroid > 900:
+        drum_type = "snare" if centroid > 1400 else "tom"
+    elif drum_type == "snare" and centroid < 350:
+        drum_type = "kick"
+
+    confidence = min(0.97, 0.62 + raw_conf * 0.35)
+    return drum_type, confidence
 
 
 class HitDetectionEngine:
@@ -117,98 +208,61 @@ class HitDetectionEngine:
 
         t0 = time.perf_counter()
 
-        # ── 1. HPSS: separate percussive component ──────────────────────────
+        # 1. HPSS — isolate percussive layer
         _, y_perc = librosa.effects.hpss(y)
 
-        # ── 2. Onset detection ───────────────────────────────────────────────
-        hop = max(64, int(sr * pre_filter_ms / 1000.0))
-
+        # 2. Onset timing
         if _ESSENTIA_OK:
-            onset_times = _hfc_onsets_essentia(y_perc, sr, pre_filter_ms)
+            onset_times = _hfc_ensemble_onsets(y_perc, sr, pre_filter_ms)
         else:
-            # Fallback to librosa
-            delta = max(0.1, 2.0 - sensitivity * 1.9)
-            onset_times = _librosa_onsets(y_perc, sr, delta, hop)
+            onset_times = _librosa_onsets_fallback(y_perc, sr, sensitivity)
 
-        # ── 3. Time-domain RMS threshold ────────────────────────────────────
+        # 3. Pre-compute features used for threshold + classification
         threshold_linear = 10.0 ** (threshold_db / 20.0)
 
-        # ── 4. Spectral features for classification ──────────────────────────
-        # Pre-compute STFT on the ORIGINAL signal (full-timbre read)
-        D         = librosa.stft(y, hop_length=hop)
-        magnitude = np.abs(D)
+        magnitude = np.abs(librosa.stft(y, hop_length=_HOP_SIZE))
         freqs     = librosa.fft_frequencies(sr=sr)
 
-        # Frequency band masks
-        low_mask  = freqs < 200
-        mid_mask  = (freqs >= 200) & (freqs < 2500)
-        high_mask = freqs >= 5000
-        tom_mask  = (freqs >= 100) & (freqs < 500)
+        # Multi-band onset novelty (ADTLib-style feature extraction)
+        odf_bands = librosa.onset.onset_strength_multi(
+            y=y, sr=sr, hop_length=_HOP_SIZE,
+            channels=_MEL_CHANNELS,
+        )   # shape (4, n_frames)
 
-        # ── 5. For each onset, threshold + classify ──────────────────────────
-        #
-        # Minimum inter-onset interval from sensitivity (controls de-duplication):
-        # sensitivity 0.1→1.0  →  min_gap 0.08→0.015 s
-        min_gap = max(0.012, 0.08 - sensitivity * 0.065)
-        last_time: float = -999.0
-
+        # 4. Per-onset: threshold → classify
+        min_gap  = max(0.012, 0.08 - sensitivity * 0.065)
+        last_t   = -999.0
         hits: List[dict] = []
 
         for onset_time in sorted(onset_times):
-            # De-duplicate: respect minimum gap
-            if onset_time - last_time < min_gap:
+            if onset_time - last_t < min_gap:
                 continue
 
-            # RMS in a 20 ms window after onset (captures attack without
-            # diluting with post-transient silence)
-            sample_start = int(onset_time * sr)
-            sample_end   = min(len(y), sample_start + int(0.020 * sr))
-            window_y = y[sample_start:sample_end]
-            if len(window_y) == 0:
+            # 20 ms RMS — captures attack without silence dilution
+            s0 = int(onset_time * sr)
+            s1 = min(len(y), s0 + int(0.020 * sr))
+            window = y[s0:s1]
+            if len(window) == 0:
                 continue
-            rms_td = float(np.sqrt(np.mean(window_y ** 2)))
-
-            if rms_td < threshold_linear:
+            rms = float(np.sqrt(np.mean(window ** 2)))
+            if rms < threshold_linear:
                 continue
 
-            last_time = onset_time
+            last_t = onset_time
 
-            # Velocity 20–127 from normalised RMS
-            norm     = rms_td / max(threshold_linear, 1e-9)
-            velocity = int(np.clip(20 + norm * 55, 20, 127))
+            norm_rms = rms / max(threshold_linear, 1e-9)
+            velocity = int(np.clip(20 + norm_rms * 55, 20, 127))
 
-            # Spectral classification: 30-frame window in STFT
-            frame_idx = min(int(onset_time * sr / hop), magnitude.shape[1] - 1)
-            win_start = frame_idx
-            win_end   = min(magnitude.shape[1], win_start + 30)
-            spec      = magnitude[:, win_start:win_end]
-
-            low_e  = float(np.mean(spec[low_mask, :]))  if low_mask.any()  else 0.0
-            mid_e  = float(np.mean(spec[mid_mask, :]))  if mid_mask.any()  else 0.0
-            high_e = float(np.mean(spec[high_mask, :])) if high_mask.any() else 0.0
-            tom_e  = float(np.mean(spec[tom_mask, :]))  if tom_mask.any()  else 0.0
-            total_e = low_e + mid_e + high_e + 1e-12
-
-            centroid = float(
-                np.sum(freqs[:, None] * spec) / (np.sum(spec) + 1e-12)
+            drum_type, confidence = _classify_onset(
+                onset_time, y, sr, odf_bands, magnitude, freqs
             )
 
-            # Decision tree
-            if high_e / total_e > 0.55:
-                drum_type  = "hihat"
-                confidence = min(0.97, 0.72 + (high_e / total_e) * 0.25)
-            elif low_e > mid_e and low_e > high_e and centroid < 450:
-                drum_type  = "kick"
-                confidence = min(0.97, 0.72 + (low_e / total_e) * 0.25)
-            elif mid_e > low_e * 1.3 and centroid > 800:
-                drum_type  = "snare"
-                confidence = min(0.97, 0.70 + (mid_e / total_e) * 0.27)
-            elif tom_e > 0 and centroid < 650 and low_e < mid_e:
-                drum_type  = "tom"
-                confidence = 0.72
-            else:
-                drum_type  = "kick" if centroid < 500 else "snare"
-                confidence = 0.62
+            _f0 = min(int(onset_time * sr / _HOP_SIZE), magnitude.shape[1] - 1)
+            _f1 = min(magnitude.shape[1], _f0 + 20)
+            _spec_w = magnitude[:, _f0:_f1]
+            centroid = float(
+                np.sum(freqs[:, None] * _spec_w) / (np.sum(_spec_w) + 1e-12)
+            )
 
             hits.append({
                 "id":                 str(uuid.uuid4()),
@@ -223,7 +277,6 @@ class HitDetectionEngine:
         return hits, elapsed
 
     async def detect_tempo(self, y: np.ndarray, sr: int) -> float:
-        """Estimate BPM using librosa beat tracking."""
         try:
             tempo_arr, _ = librosa.beat.beat_track(y=y, sr=sr)
             bpm = float(tempo_arr[0]) if hasattr(tempo_arr, "__len__") else float(tempo_arr)

@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "nT9nCbLyeSvRYEZ02nAp3"
+uri = "file://artifacts/mockup-sandbox/public/images/analog-studio.png"
+type = "image"
+title = "analog tube amplifier glowing"

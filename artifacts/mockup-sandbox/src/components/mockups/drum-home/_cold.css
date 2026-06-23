@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..800&family=Inter:wght@300;400;500;600&display=swap');
+
+.font-mono-clinical {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.font-sans-clinical {
+  font-family: 'Inter', sans-serif;
+}
+
+.bg-clinical-black {
+  background-color: #080C10;
+}
+
+.text-clinical-cyan {
+  color: #00D4FF;
+}
+
+.text-clinical-white {
+  color: #E8F4F8;
+}
+
+.border-clinical-cyan {
+  border-color: rgba(0, 212, 255, 0.3);
+}
+
+.scanline-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanline-container::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 50;
+  background-size: 100% 2px, 3px 100%;
+  pointer-events: none;
+}
+
+.scanline-sweep::before {
+  content: "";
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  top: 0;
+  left: 0;
+  animation: scan 4s linear infinite;
+  pointer-events: none;
+  z-index: 51;
+}
+
+@keyframes scan {
+  0% { top: -10%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 110%; opacity: 0; }
+}
+
+.blinking-cursor {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.clinical-card {
+  background: rgba(8, 12, 16, 0.8);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.clinical-card::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #00D4FF;
+  border-left: 1px solid #00D4FF;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.clinical-card::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 1px solid #00D4FF;
+  border-right: 1px solid #00D4FF;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.clinical-card:hover {
+  border-color: rgba(0, 212, 255, 0.6);
+  box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.05), 0 0 15px rgba(0, 212, 255, 0.1);
+}
+
+.clinical-card:hover::before,
+.clinical-card:hover::after {
+  opacity: 1;
+}
+
+.grid-bg {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 212, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 212, 255, 0.05) 1px, transparent 1px);
+}

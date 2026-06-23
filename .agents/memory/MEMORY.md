@@ -1,0 +1,1 @@
+- [DrumTracker stack](drumtracker-stack.md) — React+Vite (port 5000) + FastAPI (port 8080) with librosa DSP; backend serves built frontend in production.

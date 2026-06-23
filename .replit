@@ -1,10 +1,11 @@
-modules = ["dotnet-7.0", "web", "python-3.11"]
+modules = ["dotnet-7.0", "web", "python-3.11", "nodejs-20"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
 
 [nix]
 channel = "stable-25_05"
+packages = ["ffmpeg-full", "libsndfile", "libxcrypt", "pkg-config", "xsimd"]
 
 [workflows]
 runButton = "Project"
@@ -22,18 +23,20 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python3 -m http.server 5000 --bind 0.0.0.0"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "(cd backend && python3 -m uvicorn main:app --host 127.0.0.1 --port 8080) & (cd frontend && npm run dev)"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [deployment]
-deploymentTarget = "static"
+deploymentTarget = "autoscale"
 publicDir = "."
+run = ["bash", "-c", "cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 5000"]
+build = ["bash", "-c", "cd frontend && npm install && npm run build"]

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useApp } from '../context/AppContext'
 
 const KITS = [
   { id: 'rock', name: 'Rock Standard', style: 'Rock', bpm: '80–140', desc: 'Punchy kick, cracking snare, crisp cymbals. Analog warmth.', color: '#FF2244', icon: '🥁' },
@@ -10,7 +10,7 @@ const KITS = [
 ]
 
 export default function AIKits() {
-  const [selected, setSelected] = useState<string | null>(null)
+  const { selectedKit: selected, setSelectedKit: setSelected } = useApp()
 
   return (
     <div>

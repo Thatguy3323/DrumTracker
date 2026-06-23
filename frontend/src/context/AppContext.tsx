@@ -37,6 +37,8 @@ interface AppState {
   setWaveformPeaks: (p: number[]) => void
   detectionResult: DetectionResult | null
   setDetectionResult: (r: DetectionResult | null) => void
+  selectedKit: string | null
+  setSelectedKit: (k: string | null) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -45,12 +47,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [audioMeta, setAudioMeta] = useState<AudioMeta | null>(null)
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([])
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null)
+  const [selectedKit, setSelectedKit] = useState<string | null>(null)
 
   return (
     <AppContext.Provider value={{
       audioMeta, setAudioMeta,
       waveformPeaks, setWaveformPeaks,
       detectionResult, setDetectionResult,
+      selectedKit, setSelectedKit,
     }}>
       {children}
     </AppContext.Provider>

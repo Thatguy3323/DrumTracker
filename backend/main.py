@@ -13,6 +13,7 @@ from models import DetectRequest, DetectionResult, DrumHit, AudioMetadata
 from engines.audio_engine import AudioEngine
 from engines.hit_detection_engine import HitDetectionEngine
 from engines.midi_export_engine import MidiExportEngine
+from engines.replacement_engine import DrumReplacementEngine
 
 app = FastAPI(title="DrumTracker API", version="1.0.0")
 
@@ -26,6 +27,7 @@ app.add_middleware(
 audio_engine = AudioEngine()
 hit_engine = HitDetectionEngine()
 midi_engine = MidiExportEngine()
+replacement_engine = DrumReplacementEngine()
 
 # In-memory session store
 _audio_sessions: dict = {}   # audio_id -> AudioMetadata
@@ -109,6 +111,49 @@ async def get_detection(detection_id: str):
     if not result:
         raise HTTPException(status_code=404, detail="Detection ID not found.")
     return result
+
+
+# ── Drum Replacement ───────────────────────────────────────────────────────────
+
+from pydantic import BaseModel as _BaseModel
+
+class ReplacementRequest(_BaseModel):
+    detection_id: str
+    kit_id: str = "rock"
+    keep_original: bool = True
+    kit_level: float = 0.8
+
+
+@app.post("/api/replacement/process")
+async def process_replacement(req: ReplacementRequest):
+    result = _detection_sessions.get(req.detection_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Detection ID not found. Run hit detection first.")
+
+    try:
+        y, sr = audio_engine.get_audio(result.audio_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Original audio not found in cache. Please re-upload the audio file.")
+
+    hits_raw = [h.dict() for h in result.hits]
+
+    wav_bytes = replacement_engine.process(
+        y=y,
+        sr=sr,
+        hits=hits_raw,
+        kit_id=req.kit_id,
+        keep_original=req.keep_original,
+        kit_level=req.kit_level,
+    )
+
+    mode = "augmented" if req.keep_original else "replaced"
+    return Response(
+        content=wav_bytes,
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": f'attachment; filename="drumtracker_{mode}_{req.detection_id[:8]}.wav"'
+        },
+    )
 
 
 # ── MIDI Export ────────────────────────────────────────────────────────────────

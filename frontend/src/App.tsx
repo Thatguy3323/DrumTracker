@@ -5,15 +5,17 @@ import Home from './pages/Home'
 import AudioProcessing from './pages/AudioProcessing'
 import HitDetection from './pages/HitDetection'
 import AIKits from './pages/AIKits'
+import DrumReplacement from './pages/DrumReplacement'
 import MidiExport from './pages/MidiExport'
 import { AppProvider } from './context/AppContext'
 
 const ROUTES = [
-  { path: '/',               label: 'Home',             icon: '⌂' },
-  { path: '/audio',          label: 'Audio Processing',  icon: '◈' },
-  { path: '/detection',      label: 'Hit Detection',     icon: '◎' },
-  { path: '/kits',           label: 'AI Kits',           icon: '◉' },
-  { path: '/export',         label: 'MIDI Export',       icon: '↗' },
+  { path: '/',            label: 'Home',              icon: '⌂' },
+  { path: '/audio',       label: 'Audio Processing',  icon: '◈' },
+  { path: '/detection',   label: 'Hit Detection',     icon: '◎' },
+  { path: '/kits',        label: 'AI Kits',           icon: '◉' },
+  { path: '/replacement', label: 'Drum Replacement',  icon: '🥁' },
+  { path: '/export',      label: 'MIDI Export',       icon: '↗' },
 ]
 
 export { ROUTES }
@@ -32,12 +34,13 @@ export default function App() {
             padding: '28px 32px',
           }}>
             <Routes>
-              <Route path="/"          element={<Home />} />
-              <Route path="/audio"     element={<AudioProcessing />} />
-              <Route path="/detection" element={<HitDetection />} />
-              <Route path="/kits"      element={<AIKits />} />
-              <Route path="/export"    element={<MidiExport />} />
-              <Route path="*"          element={<Navigate to="/" replace />} />
+              <Route path="/"            element={<Home />} />
+              <Route path="/audio"       element={<AudioProcessing />} />
+              <Route path="/detection"   element={<HitDetection />} />
+              <Route path="/kits"        element={<AIKits />} />
+              <Route path="/replacement" element={<DrumReplacement />} />
+              <Route path="/export"      element={<MidiExport />} />
+              <Route path="*"            element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         </div>

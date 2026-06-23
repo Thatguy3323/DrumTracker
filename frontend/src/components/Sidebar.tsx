@@ -14,19 +14,12 @@ export default function Sidebar({ routes }: { routes: Route[] }) {
       padding: '20px 0',
     }}>
       {/* Logo */}
-      <div style={{ padding: '0 20px 24px' }}>
-        <div className="orbitron" style={{
-          fontSize: 18,
-          fontWeight: 700,
-          color: 'var(--color-primary)',
-          letterSpacing: '0.05em',
-          lineHeight: 1,
-        }}>
-          DrumTracker
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, letterSpacing: '0.1em' }}>
-          AUDIO IN · MIDI OUT
-        </div>
+      <div style={{ padding: '0 16px 24px' }}>
+        <img
+          src="/logo-wordmark.png"
+          alt="DrumTracker"
+          style={{ width: '100%', maxWidth: 190, display: 'block' }}
+        />
       </div>
 
       {/* Divider */}

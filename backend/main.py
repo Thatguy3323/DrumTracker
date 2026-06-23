@@ -331,5 +331,7 @@ if _DIST.exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="Not found")
         index = _DIST / "index.html"
         return FileResponse(str(index))

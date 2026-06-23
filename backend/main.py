@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 import uuid
 import json
@@ -19,8 +21,11 @@ from engines.conversion_engine import ConversionEngine
 from database import (
     init_db, save_audio_session, save_detection_session,
     list_sessions, load_audio_session, load_detection_session,
+    cleanup_orphaned_uploads,
     UPLOADS_DIR,
 )
+
+logger = logging.getLogger("drumtracker")
 
 app = FastAPI(title="DrumTracker API", version="1.0.0")
 
@@ -38,11 +43,36 @@ replacement_engine = DrumReplacementEngine()
 conversion_engine = ConversionEngine()
 
 
+_cleanup_lock = asyncio.Lock()
+
+
+def _run_cleanup():
+    """Synchronous cleanup worker — called from a thread pool so it never blocks the event loop."""
+    try:
+        orphaned, old = cleanup_orphaned_uploads(max_age_days=30, orphan_grace_seconds=600)
+        if orphaned or old:
+            logger.info("Upload cleanup: removed %d orphaned and %d old files.", orphaned, old)
+        else:
+            logger.debug("Upload cleanup: nothing to remove.")
+    except Exception:
+        logger.exception("Upload cleanup failed.")
+
+
+async def _schedule_cleanup():
+    """Fire-and-forget: run the cleanup in a thread, but skip if a cleanup is already in progress."""
+    if _cleanup_lock.locked():
+        return
+    async with _cleanup_lock:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _run_cleanup)
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
     await audio_engine.initialize()
     await hit_engine.initialize()
+    asyncio.create_task(_schedule_cleanup())
 
 
 # ── Audio ──────────────────────────────────────────────────────────────────────
@@ -64,6 +94,7 @@ async def upload_audio(file: UploadFile = File(...)):
         f.write(content)
 
     save_audio_session(meta, audio_path=audio_path)
+    asyncio.create_task(_schedule_cleanup())
     return audio_meta
 
 

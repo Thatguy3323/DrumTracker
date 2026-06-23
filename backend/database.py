@@ -120,6 +120,57 @@ def load_audio_session(audio_id: str) -> dict | None:
         }
 
 
+def list_audio_ids_in_db() -> set[str]:
+    """Return the set of all audio_ids currently tracked in the database."""
+    with SessionLocal() as db:
+        rows = db.query(AudioSessionRow.audio_id).all()
+        return {r.audio_id for r in rows}
+
+
+def cleanup_orphaned_uploads(
+    max_age_days: int = 30,
+    orphan_grace_seconds: int = 600,
+) -> tuple[int, int]:
+    """
+    Remove files from UPLOADS_DIR that are either:
+      - Not referenced by any row in audio_sessions AND older than
+        orphan_grace_seconds (default 10 min) — protects in-flight uploads
+        that have been written to disk but not yet committed to the DB.
+      - Older than max_age_days days (regardless of DB presence).
+
+    Returns (orphaned_count, old_count) of files removed.
+    """
+    import time
+
+    known_ids = list_audio_ids_in_db()
+    now = time.time()
+    age_cutoff = now - max_age_days * 86400
+    grace_cutoff = now - orphan_grace_seconds
+
+    orphaned = 0
+    old = 0
+
+    for filepath in UPLOADS_DIR.iterdir():
+        if not filepath.is_file():
+            continue
+
+        # Derive the audio_id from the filename stem (UUID before extension)
+        audio_id = filepath.stem
+        mtime = filepath.stat().st_mtime
+        in_db = audio_id in known_ids
+
+        if not in_db and mtime < grace_cutoff:
+            # Orphaned and past the grace window — safe to remove
+            filepath.unlink(missing_ok=True)
+            orphaned += 1
+        elif in_db and mtime < age_cutoff:
+            # Known to DB but older than the retention limit
+            filepath.unlink(missing_ok=True)
+            old += 1
+
+    return orphaned, old
+
+
 def load_detection_session(detection_id: str) -> dict | None:
     with SessionLocal() as db:
         row = db.query(DetectionSessionRow).filter_by(detection_id=detection_id).first()

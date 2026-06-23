@@ -64,7 +64,7 @@ function StatusBar() {
 
   const status = detectionResult ? 'DETECTED' : audioMeta ? 'AUDIO LOADED' : 'READY'
   const statusColor = detectionResult ? '#00FF41' : audioMeta ? '#00E5CC' : 'var(--text-muted)'
-  const projectName = audioMeta?.filename ?? 'No project'
+  const projectName = audioMeta?.file_name ?? 'No project'
 
   return (
     <div style={{

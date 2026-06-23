@@ -1,15 +1,17 @@
 import asyncio
+import io
 import logging
 import os
 import uuid
 import json
+import zipfile
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, FileResponse
+from fastapi.responses import Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from models import DetectRequest, DetectionResult, DrumHit, AudioMetadata
@@ -202,6 +204,39 @@ async def load_session(detection_id: str):
         "audio": audio_meta,
         "detection": detection_result,
     }
+
+
+@app.get("/api/sessions/{detection_id}/export")
+async def export_session(detection_id: str):
+    detection_data = load_detection_session(detection_id)
+    if not detection_data:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    audio_data = load_audio_session(detection_data["audio_id"])
+    if not audio_data:
+        raise HTTPException(status_code=404, detail="Audio metadata not found for session.")
+
+    audio_path = audio_data.get("audio_path")
+    if not audio_path or not Path(audio_path).exists():
+        raise HTTPException(status_code=404, detail="Audio file not found on disk — it may have been pruned.")
+
+    hits_json_bytes = json.dumps(detection_data, indent=2).encode("utf-8")
+
+    audio_filename = Path(audio_path).name
+    short_id = detection_id[:8]
+    zip_filename = f"drumtracker_session_{short_id}.zip"
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(audio_path, arcname=audio_filename)
+        zf.writestr(f"hits_{short_id}.json", hits_json_bytes)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
 
 
 # ── Drum Replacement ───────────────────────────────────────────────────────────

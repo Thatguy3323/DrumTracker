@@ -28,6 +28,7 @@ export default function Sessions() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSessions()
@@ -43,6 +44,27 @@ export default function Sessions() {
       setError('Could not load session history.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function downloadSession(detectionId: string, fileName: string) {
+    setDownloadingId(detectionId)
+    try {
+      const response = await axios.get(`/api/sessions/${detectionId}/export`, {
+        responseType: 'blob',
+      })
+      const url = URL.createObjectURL(response.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `drumtracker_session_${detectionId.slice(0, 8)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? 'Failed to download session.')
+    } finally {
+      setDownloadingId(null)
     }
   }
 
@@ -106,7 +128,9 @@ export default function Sessions() {
               key={s.detection_id}
               session={s}
               loading={loadingId === s.detection_id}
+              downloading={downloadingId === s.detection_id}
               onLoad={() => loadSession(s.detection_id, s.audio_id)}
+              onDownload={() => downloadSession(s.detection_id, s.file_name)}
             />
           ))}
         </div>
@@ -115,10 +139,12 @@ export default function Sessions() {
   )
 }
 
-function SessionCard({ session: s, loading, onLoad }: {
+function SessionCard({ session: s, loading, downloading, onLoad, onDownload }: {
   session: SessionSummary
   loading: boolean
+  downloading: boolean
   onLoad: () => void
+  onDownload: () => void
 }) {
   const date = s.completed_at
     ? new Date(s.completed_at + (s.completed_at.endsWith('Z') ? '' : 'Z')).toLocaleString()
@@ -145,14 +171,25 @@ function SessionCard({ session: s, loading, onLoad }: {
         </div>
       </div>
 
-      <button
-        className="btn btn-primary"
-        onClick={onLoad}
-        disabled={loading}
-        style={{ flexShrink: 0, fontSize: 12, padding: '8px 16px' }}
-      >
-        {loading ? <><Spinner /> Loading…</> : '↩ Restore'}
-      </button>
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <button
+          className="btn btn-secondary"
+          onClick={onDownload}
+          disabled={downloading || loading}
+          title="Download session zip (audio + hits JSON)"
+          style={{ fontSize: 12, padding: '8px 14px' }}
+        >
+          {downloading ? <><Spinner /> Zipping…</> : '⬇ Download'}
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={onLoad}
+          disabled={loading || downloading}
+          style={{ fontSize: 12, padding: '8px 16px' }}
+        >
+          {loading ? <><Spinner /> Loading…</> : '↩ Restore'}
+        </button>
+      </div>
     </div>
   )
 }

@@ -1,54 +1,44 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import Sidebar from './components/Sidebar'
-import TopBar from './components/TopBar'
-import AudioPlayer from './components/AudioPlayer'
-import Home from './pages/Home'
-import AudioProcessing from './pages/AudioProcessing'
-import HitDetection from './pages/HitDetection'
-import AIKits from './pages/AIKits'
-import DrumReplacement from './pages/DrumReplacement'
-import MidiExport from './pages/MidiExport'
-import Sessions from './pages/Sessions'
+import { useState } from 'react'
 import { AppProvider } from './context/AppContext'
+import DAWHeader from './components/DAWHeader'
+import DetectView from './views/DetectView'
+import MapView from './views/MapView'
+import ExportView from './views/ExportView'
+import KitManagerView from './views/KitManagerView'
+import SessionsModal from './views/SessionsModal'
 
-const ROUTES = [
-  { path: '/',            label: 'Home',             icon: '⌂' },
-  { path: '/audio',       label: 'Audio Processing', icon: '◈' },
-  { path: '/detection',   label: 'Hit Detection',    icon: '◎' },
-  { path: '/sessions',    label: 'Sessions',         icon: '◷' },
-  { path: '/kits',        label: 'AI Kits',          icon: '◉' },
-  { path: '/replacement', label: 'Drum Replacement', icon: '🥁' },
-  { path: '/export',      label: 'MIDI Export',      icon: '↗' },
-]
-
-export { ROUTES }
+export type TabId = 'detect' | 'map' | 'export' | 'kits'
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<TabId>('detect')
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+
   return (
     <AppProvider>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-        <Sidebar routes={ROUTES} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <TopBar routes={ROUTES} />
-          <main style={{
-            flex: 1,
-            overflowY: 'auto',
-            background: 'var(--bg-primary)',
-            padding: '28px 32px',
-          }}>
-            <Routes>
-              <Route path="/"            element={<Home />} />
-              <Route path="/audio"       element={<AudioProcessing />} />
-              <Route path="/detection"   element={<HitDetection />} />
-              <Route path="/sessions"    element={<Sessions />} />
-              <Route path="/kits"        element={<AIKits />} />
-              <Route path="/replacement" element={<DrumReplacement />} />
-              <Route path="/export"      element={<MidiExport />} />
-              <Route path="*"            element={<Navigate to="/" replace />} />
-            </Routes>
-          </main>
-          <AudioPlayer />
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        overflow: 'hidden',
+        background: 'var(--bg-primary)',
+      }}>
+        <DAWHeader
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onSessionsClick={() => setSessionsOpen(true)}
+        />
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {activeTab === 'detect'  && <DetectView onNavigateToTab={setActiveTab} />}
+          {activeTab === 'map'     && <MapView />}
+          {activeTab === 'export'  && <ExportView />}
+          {activeTab === 'kits'    && <KitManagerView />}
         </div>
+        {sessionsOpen && (
+          <SessionsModal
+            onClose={() => setSessionsOpen(false)}
+            onRestored={() => { setSessionsOpen(false); setActiveTab('detect') }}
+          />
+        )}
       </div>
     </AppProvider>
   )

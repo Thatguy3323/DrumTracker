@@ -131,12 +131,15 @@ async def detect_hits(req: DetectRequest):
             raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
         y, sr = audio_engine.get_audio(req.audio_id)
 
-    raw_hits, elapsed = await hit_engine.detect_hits(
-        y=y,
-        sr=sr,
-        sensitivity=req.sensitivity,
-        threshold_db=req.threshold,
-        pre_filter_ms=req.pre_filter,
+    (raw_hits, elapsed), tempo_bpm = await asyncio.gather(
+        hit_engine.detect_hits(
+            y=y,
+            sr=sr,
+            sensitivity=req.sensitivity,
+            threshold_db=req.threshold,
+            pre_filter_ms=req.pre_filter,
+        ),
+        hit_engine.detect_tempo(y=y, sr=sr),
     )
 
     detection_id = str(uuid.uuid4())
@@ -160,6 +163,7 @@ async def detect_hits(req: DetectRequest):
         processing_time=elapsed,
         hits=drum_hits,
         completed_at=completed_at,
+        tempo_bpm=tempo_bpm,
     )
 
     save_detection_session(result.dict())

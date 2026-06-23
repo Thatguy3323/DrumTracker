@@ -28,6 +28,7 @@ export interface DetectionResult {
   processing_time: number
   hits: DrumHit[]
   completed_at: string
+  tempo_bpm?: number | null
 }
 
 export interface ConversionJob {

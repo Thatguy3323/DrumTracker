@@ -40,6 +40,7 @@ class DetectionResult(BaseModel):
     processing_time: float
     hits: List[DrumHit] = []
     completed_at: str = ""
+    tempo_bpm: Optional[float] = None
 
 
 class ExportRequest(BaseModel):

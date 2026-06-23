@@ -5,7 +5,7 @@ import AudioPlayer from '../components/AudioPlayer'
 import type { TabId } from '../App'
 
 const DRUM_COLORS: Record<string, string> = {
-  kick: '#FF2244', snare: '#00C8FF', hihat: '#00FF41', tom: '#FF7A00',
+  kick: '#EF4444', snare: '#3B82F6', hihat: '#22C55E', tom: '#F97316',
 }
 const DRUM_ORDER = ['kick', 'snare', 'hihat', 'tom']
 const DRUM_LABELS: Record<string, string> = {
@@ -143,8 +143,8 @@ function AudioInputPanel() {
               position: 'absolute', inset: 0,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               gap: 8,
-              background: dragging ? 'rgba(0,255,65,0.04)' : 'transparent',
-              border: `2px dashed ${dragging ? 'rgba(0,255,65,0.5)' : 'rgba(255,255,255,0.08)'}`,
+              background: dragging ? 'rgba(249,115,22,0.04)' : 'transparent',
+              border: `2px dashed ${dragging ? 'rgba(249,115,22,0.5)' : 'rgba(255,255,255,0.08)'}`,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}
@@ -301,13 +301,20 @@ function MiniWaveform({
 /* ═══════════════════════════════════════════════════════════════════════════
    DETECTION CONTROL PANEL
 ═══════════════════════════════════════════════════════════════════════════ */
+const PARAM_HELP: Record<string, string> = {
+  sensitivity: 'How aggressively transients are picked up. Higher = catches more quiet hits but may add false positives. Start at 0.70.',
+  threshold:   'Minimum loudness a hit must reach to be counted, in dBFS. –24 dB is permissive; –6 dB is strict. Lower (more negative) = quieter hits allowed.',
+  retrigger:   'Dead-time after each hit during which a second hit is ignored, in milliseconds. Prevents double-triggers on the same stroke. 15 ms suits most acoustic drums.',
+}
+
 function DetectionControlPanel() {
   const { audioMeta, detectionResult, setDetectionResult } = useApp()
-  const [sensitivity, setSensitivity] = useState(0.7)
-  const [threshold, setThreshold]     = useState(-18)
+  const [sensitivity, setSensitivity] = useState(0.72)
+  const [threshold, setThreshold]     = useState(-30)
   const [preFilter, setPreFilter]     = useState(15)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
+  const [hoveredParam, setHoveredParam] = useState<string | null>(null)
 
   async function detect() {
     if (!audioMeta) return
@@ -337,36 +344,57 @@ function DetectionControlPanel() {
           <span style={{
             marginLeft: 'auto', fontSize: 9, fontWeight: 700,
             color: 'var(--color-primary)',
-            padding: '1px 6px', background: 'rgba(0,255,65,0.1)',
-            border: '1px solid rgba(0,255,65,0.3)', borderRadius: 10,
+            padding: '1px 6px', background: 'rgba(249,115,22,0.12)',
+            border: '1px solid rgba(249,115,22,0.35)', borderRadius: 10,
           }}>
             {detectionResult.total_hits} HITS
           </span>
         )}
       </div>
 
-      <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+      <div style={{ flex: 1, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden' }}>
         <DawSlider
           label="SENSITIVITY"
+          helpKey="sensitivity"
           value={sensitivity} min={0.1} max={1.0} step={0.01}
           display={sensitivity.toFixed(2)}
           color="var(--color-primary)"
           onChange={setSensitivity}
+          onHover={setHoveredParam}
         />
         <DawSlider
           label="THRESHOLD"
-          value={threshold} min={-40} max={-3} step={0.5}
+          helpKey="threshold"
+          value={threshold} min={-48} max={-3} step={0.5}
           display={`${threshold} dB`}
           color="var(--color-secondary)"
           onChange={setThreshold}
+          onHover={setHoveredParam}
         />
         <DawSlider
           label="RETRIGGER FILTER"
-          value={preFilter} min={5} max={30} step={1}
+          helpKey="retrigger"
+          value={preFilter} min={5} max={80} step={1}
           display={`${preFilter} ms`}
           color="var(--color-tertiary)"
           onChange={setPreFilter}
+          onHover={setHoveredParam}
         />
+
+        {/* Contextual help tooltip */}
+        <div style={{
+          minHeight: 34,
+          fontSize: 9,
+          color: hoveredParam ? 'var(--text-secondary)' : 'var(--text-muted)',
+          lineHeight: 1.55,
+          padding: '4px 6px',
+          background: hoveredParam ? 'rgba(255,255,255,0.03)' : 'transparent',
+          borderRadius: 'var(--radius-sm)',
+          border: hoveredParam ? '1px solid var(--border)' : '1px solid transparent',
+          transition: 'all 0.18s ease',
+        }}>
+          {hoveredParam ? PARAM_HELP[hoveredParam] : 'Hover a parameter label for guidance.'}
+        </div>
 
         <button
           onClick={detect}
@@ -374,21 +402,22 @@ function DetectionControlPanel() {
           style={{
             marginTop: 'auto',
             padding: '9px 12px',
-            background: loading ? 'rgba(0,255,65,0.06)' : audioMeta ? 'rgba(0,255,65,0.14)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${audioMeta ? 'rgba(0,255,65,0.5)' : 'var(--border)'}`,
+            background: loading
+              ? 'rgba(249,115,22,0.06)'
+              : audioMeta
+                ? 'rgba(249,115,22,0.16)'
+                : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${audioMeta ? 'rgba(249,115,22,0.55)' : 'var(--border)'}`,
             borderRadius: 'var(--radius)',
             color: audioMeta ? 'var(--color-primary)' : 'var(--text-muted)',
             fontWeight: 700, fontSize: 11, letterSpacing: '0.08em',
             cursor: loading || !audioMeta ? 'not-allowed' : 'pointer',
-            boxShadow: audioMeta && !loading ? '0 0 14px rgba(0,255,65,0.1)' : 'none',
+            boxShadow: audioMeta && !loading ? '0 0 14px rgba(249,115,22,0.12)' : 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}
         >
           {loading ? (
-            <>
-              <Spinner />
-              ANALYZING…
-            </>
+            <><Spinner /> ANALYZING…</>
           ) : (
             <>◎ AUTO DETECT</>
           )}
@@ -401,8 +430,8 @@ function DetectionControlPanel() {
         )}
 
         {error && (
-          <div style={{ fontSize: 10, color: 'var(--color-error)', padding: '5px 8px', background: 'rgba(255,34,68,0.08)', borderRadius: 'var(--radius-sm)' }}>
-            {error}
+          <div style={{ fontSize: 10, color: 'var(--color-error)', padding: '5px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: 'var(--radius-sm)' }}>
+            ⚠ {error}
           </div>
         )}
       </div>
@@ -410,14 +439,21 @@ function DetectionControlPanel() {
   )
 }
 
-function DawSlider({ label, value, min, max, step, display, color, onChange }: {
-  label: string; value: number; min: number; max: number; step: number
-  display: string; color: string; onChange: (v: number) => void
+function DawSlider({ label, helpKey, value, min, max, step, display, color, onChange, onHover }: {
+  label: string; helpKey?: string; value: number; min: number; max: number; step: number
+  display: string; color: string; onChange: (v: number) => void; onHover?: (k: string | null) => void
 }) {
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-        <span className="panel-label">{label}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span
+          className="panel-label"
+          style={{ cursor: helpKey ? 'help' : 'default', borderBottom: helpKey ? '1px dotted rgba(255,255,255,0.2)' : 'none' }}
+          onMouseEnter={() => helpKey && onHover?.(helpKey)}
+          onMouseLeave={() => onHover?.(null)}
+        >
+          {label}
+        </span>
         <span className="mono" style={{ fontSize: 10, fontWeight: 700, color }}>{display}</span>
       </div>
       <input
@@ -924,10 +960,19 @@ function AIAssistantPanel({ onNavigateToTab }: { onNavigateToTab: (tab: TabId) =
 ═══════════════════════════════════════════════════════════════════════════ */
 function QuickExportPanel() {
   const { detectionResult } = useApp()
-  const [tempo, setTempo]       = useState(120)
+  const detectedBpm = detectionResult?.tempo_bpm
+  const [tempo, setTempo]         = useState(120)
   const [exporting, setExporting] = useState(false)
-  const [exported, setExported]  = useState(false)
-  const [error, setError]        = useState('')
+  const [exported, setExported]   = useState(false)
+  const [error, setError]         = useState('')
+
+  // Auto-fill tempo whenever detection produces a BPM estimate
+  useEffect(() => {
+    if (detectedBpm && detectedBpm > 0) {
+      setTempo(Math.round(detectedBpm))
+      setExported(false)
+    }
+  }, [detectedBpm])
 
   async function exportMidi() {
     if (!detectionResult) return
@@ -978,14 +1023,14 @@ function QuickExportPanel() {
           style={{
             padding: '8px',
             background: detectionResult
-              ? (exporting ? 'rgba(0,255,65,0.06)' : 'rgba(0,255,65,0.15)')
+              ? (exporting ? 'rgba(249,115,22,0.06)' : 'rgba(249,115,22,0.15)')
               : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${detectionResult ? 'rgba(0,255,65,0.5)' : 'var(--border)'}`,
+            border: `1px solid ${detectionResult ? 'rgba(249,115,22,0.5)' : 'var(--border)'}`,
             borderRadius: 'var(--radius)',
             color: detectionResult ? 'var(--color-primary)' : 'var(--text-muted)',
             fontWeight: 700, fontSize: 10, letterSpacing: '0.07em',
             cursor: !detectionResult || exporting ? 'not-allowed' : 'pointer',
-            boxShadow: detectionResult && !exporting ? '0 0 12px rgba(0,255,65,0.1)' : 'none',
+            boxShadow: detectionResult && !exporting ? '0 0 12px rgba(249,115,22,0.12)' : 'none',
           }}
         >
           {exporting ? '⏳ GENERATING…' : exported ? '✓ DOWNLOAD AGAIN' : '↗ EXPORT MIDI'}
@@ -994,7 +1039,7 @@ function QuickExportPanel() {
         {error && <div style={{ fontSize: 9, color: 'var(--color-error)' }}>{error}</div>}
 
         {exported && (
-          <div style={{ fontSize: 9, color: 'var(--color-primary)' }}>✓ Exported to MIDI</div>
+          <div style={{ fontSize: 9, color: 'var(--color-tertiary)' }}>✓ Exported to MIDI</div>
         )}
 
         {!detectionResult && (
@@ -1014,7 +1059,7 @@ function Spinner() {
   return (
     <span style={{
       display: 'inline-block', width: 10, height: 10, flexShrink: 0,
-      border: '2px solid rgba(0,255,65,0.2)', borderTopColor: 'var(--color-primary)',
+      border: '2px solid rgba(249,115,22,0.2)', borderTopColor: 'var(--color-primary)',
       borderRadius: '50%', animation: 'spin 0.7s linear infinite',
     }} />
   )

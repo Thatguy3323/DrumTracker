@@ -45,6 +45,7 @@ async def startup():
 # ── Audio ──────────────────────────────────────────────────────────────────────
 
 @app.post("/api/audio/upload", response_model=AudioMetadata)
+@app.post("/api/audio/load",   response_model=AudioMetadata)
 async def upload_audio(file: UploadFile = File(...)):
     content = await file.read()
     try:

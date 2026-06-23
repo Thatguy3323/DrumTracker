@@ -97,9 +97,9 @@ export default function MidiExport() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
           {[
-            { label: 'Format', value: 'MIDI Type 1 (.mid)' },
-            { label: 'Drum Channel', value: 'CH 10 (GM Standard)' },
-            { label: 'Note Mapping', value: 'GM Drum Kit' },
+            { label: 'Format',         value: 'MIDI Type 1 (.mid)' },
+            { label: 'Drum Channel',   value: 'CH 10 (GM Standard)' },
+            { label: 'Tracks',         value: 'One per drum type' },
             { label: 'Time Signature', value: '4/4' },
           ].map(r => (
             <div key={r.label} style={{ padding: '10px 14px', background: 'var(--bg-panel)', borderRadius: 6, border: '1px solid var(--border)' }}>
@@ -108,6 +108,45 @@ export default function MidiExport() {
             </div>
           ))}
         </div>
+
+        {/* Per-track breakdown */}
+        {hits_by_type && Object.keys(hits_by_type).length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: 10 }}>
+              ISOLATED TRACKS IN THIS EXPORT
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {Object.entries(hits_by_type).map(([type, count], i) => (
+                <div key={type} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '8px 12px',
+                  background: `${drumColor(type)}0d`,
+                  border: `1px solid ${drumColor(type)}33`,
+                  borderRadius: 6,
+                }}>
+                  <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', width: 52 }}>
+                    Track {i + 1}
+                  </span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, textTransform: 'capitalize',
+                    color: drumColor(type), minWidth: 52,
+                  }}>
+                    {type}
+                  </span>
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    note {drumNote(type)}
+                  </span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>
+                    {count} hits
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              Each drum type is on its own track — mute, solo, or edit them independently in your DAW.
+            </div>
+          </div>
+        )}
 
         <button
           className="btn btn-primary"
@@ -152,6 +191,15 @@ function Stat({ label, value, color }: { label: string; value: string | number; 
 function drumColor(type: string): string {
   const map: Record<string, string> = {
     kick: '#FF2244', snare: '#00C8FF', hihat: '#00FF7F', tom: '#FF7A00',
+    crash: '#AA44FF', ride: '#FFD700',
   }
   return map[type] ?? '#A4A9B8'
+}
+
+function drumNote(type: string): string {
+  const map: Record<string, string> = {
+    kick: 'C2 (36)', snare: 'D2 (38)', hihat: 'F#2 (42)',
+    tom: 'A2 (45)', crash: 'C#3 (49)', ride: 'D#3 (51)',
+  }
+  return map[type] ?? '—'
 }

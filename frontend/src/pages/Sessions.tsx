@@ -12,6 +12,18 @@ interface SessionSummary {
   completed_at: string
   duration: number
   audio_available: boolean
+  created_at: string | null
+}
+
+const PRUNE_DAYS = 30
+const WARN_DAYS = 7
+
+function getDaysUntilPrune(createdAt: string | null): number | null {
+  if (!createdAt) return null
+  const created = new Date(createdAt.endsWith('Z') ? createdAt : createdAt + 'Z')
+  const expiresAt = new Date(created.getTime() + PRUNE_DAYS * 86400 * 1000)
+  const msLeft = expiresAt.getTime() - Date.now()
+  return Math.ceil(msLeft / (86400 * 1000))
 }
 
 const DRUM_COLORS: Record<string, string> = {
@@ -203,6 +215,10 @@ function SessionCard({ session: s, loading, downloading, onLoad, onDownload, aud
     ? new Date(s.completed_at + (s.completed_at.endsWith('Z') ? '' : 'Z')).toLocaleString()
     : '—'
 
+  const daysLeft = getDaysUntilPrune(s.created_at)
+  const showExpiry = daysLeft !== null && daysLeft <= WARN_DAYS
+  const expiryUrgent = daysLeft !== null && daysLeft <= 2
+
   return (
     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '14px 20px' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -226,6 +242,23 @@ function SessionCard({ session: s, loading, downloading, onLoad, onDownload, aud
               letterSpacing: '0.04em',
             }}>
               ⚠ Audio unavailable
+            </span>
+          )}
+          {showExpiry && (
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: expiryUrgent ? '#FF2244' : '#FF9500',
+              background: expiryUrgent ? 'rgba(255,34,68,0.1)' : 'rgba(255,149,0,0.1)',
+              border: `1px solid ${expiryUrgent ? 'rgba(255,34,68,0.4)' : 'rgba(255,149,0,0.4)'}`,
+              borderRadius: 4,
+              padding: '2px 7px',
+              flexShrink: 0,
+              letterSpacing: '0.04em',
+            }}
+              title="Audio files are pruned 30 days after upload. Export this session to keep it."
+            >
+              ⏳ {daysLeft <= 0 ? 'Expires today' : daysLeft === 1 ? 'Expires tomorrow' : `Expires in ${daysLeft}d`}
             </span>
           )}
         </div>

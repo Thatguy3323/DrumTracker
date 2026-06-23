@@ -102,6 +102,7 @@ def list_sessions(limit: int = 50) -> list[dict]:
                 "completed_at": r.completed_at,
                 "duration": audio_row.duration if audio_row else 0,
                 "audio_available": audio_available,
+                "created_at": audio_row.created_at.isoformat() if audio_row and audio_row.created_at else None,
             })
         return result
 

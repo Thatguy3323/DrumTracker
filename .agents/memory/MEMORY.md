@@ -1,1 +1,2 @@
-- [DrumTracker stack](drumtracker-stack.md) — React+Vite (port 5000) + FastAPI (port 8080) with librosa DSP; backend serves built frontend in production.
+- [Essentia onset detection quirks](essentia-onset.md) — Essentia Onsets needs exact sr/512 frame rate; bypass it with scipy peak-picking on the normalised HFC ODF.
+- [Drum detection RMS window](drum-rms-window.md) — Use ≤20ms RMS window for transient threshold; 50ms dilutes drum attacks with trailing silence causing false negatives.

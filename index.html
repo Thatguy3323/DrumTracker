@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DrumTracker Mobile Preview</title>
+
+<style>
+    body {
+        background: black;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        color: white;
+        font-family: sans-serif;
+        flex-direction: column;
+    }
+
+    #sprite {
+        width: 300px;
+        height: 300px;
+        background-image: url("drumtracker.png");
+        background-repeat: no-repeat;
+        background-size: 500% 100%; /* 5 frames horizontally */
+        opacity: 1;
+        transition: opacity 1s linear;
+    }
+
+    #tap {
+        margin-top: 20px;
+        opacity: 0.7;
+    }
+</style>
+
+</head>
+<body>
+
+<div id="sprite"></div>
+<div id="tap">Tap to start</div>
+
+<script>
+    const sprite = document.getElementById("sprite");
+    const tap = document.getElementById("tap");
+
+    // Load your single audio file
+    const audio = new Audio("drumtracker_audio.mp3");
+
+    // Frame positions (0%, 20%, 40%, 60%, 80%)
+    const frames = ["0%", "20%", "40%", "60%", "80%"];
+
+    function startAnimation() {
+        tap.style.display = "none";
+        sprite.style.opacity = 1;
+
+        audio.currentTime = 0;
+        audio.play();
+
+        // 0.0s — Frame 1
+        setTimeout(() => {
+            sprite.style.backgroundPosition = frames[0] + " 0%";
+        }, 0);
+
+        // 1.5s — Frame 2
+        setTimeout(() => {
+            sprite.style.backgroundPosition = frames[1] + " 0%";
+        }, 1500);
+
+        // 3.0s — Frame 3
+        setTimeout(() => {
+            sprite.style.backgroundPosition = frames[2] + " 0%";
+        }, 3000);
+
+        // 4.5s — Frame 4
+        setTimeout(() => {
+            sprite.style.backgroundPosition = frames[3] + " 0%";
+        }, 4500);
+
+        // 11.0s — Frame 5 + fade out
+        setTimeout(() => {
+            sprite.style.backgroundPosition = frames[4] + " 0%";
+            sprite.style.opacity = 0;
+        }, 11000);
+    }
+
+    // Mobile requires user interaction to play audio
+    document.body.addEventListener("click", startAnimation, { once: true });
+</script>
+
+</body>
+</html>

@@ -1,2 +1,3 @@
 - [Essentia onset detection quirks](essentia-onset.md) — Essentia Onsets needs exact sr/512 frame rate; bypass it with scipy peak-picking on the normalised HFC ODF.
 - [Drum detection RMS window](drum-rms-window.md) — Use ≤20ms RMS window for transient threshold; 50ms dilutes drum attacks with trailing silence causing false negatives.
+- [CPU-only torch install](torch-cpu-install.md) — install torch from the CPU index FIRST or pip pulls 2GB+ CUDA wheels and hits the disk quota; openunmix resolves from PyPI, not the pytorch-cpu index.

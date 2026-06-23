@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
+import AudioPlayer from './components/AudioPlayer'
 import Home from './pages/Home'
 import AudioProcessing from './pages/AudioProcessing'
 import HitDetection from './pages/HitDetection'
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="*"            element={<Navigate to="/" replace />} />
             </Routes>
           </main>
+          <AudioPlayer />
         </div>
       </div>
     </AppProvider>

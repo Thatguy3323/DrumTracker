@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useRef, ReactNode } from 'react'
 
 export interface AudioMeta {
   audio_id: string
@@ -39,6 +39,8 @@ interface AppState {
   setDetectionResult: (r: DetectionResult | null) => void
   selectedKit: string | null
   setSelectedKit: (k: string | null) => void
+  audioObjectUrl: string | null
+  setAudioObjectUrl: (url: string | null) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -48,6 +50,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([])
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null)
   const [selectedKit, setSelectedKit] = useState<string | null>(null)
+  const [audioObjectUrl, _setAudioObjectUrl] = useState<string | null>(null)
+  const prevUrlRef = useRef<string | null>(null)
+
+  function setAudioObjectUrl(url: string | null) {
+    if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
+    prevUrlRef.current = url
+    _setAudioObjectUrl(url)
+  }
 
   return (
     <AppContext.Provider value={{
@@ -55,6 +65,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       waveformPeaks, setWaveformPeaks,
       detectionResult, setDetectionResult,
       selectedKit, setSelectedKit,
+      audioObjectUrl, setAudioObjectUrl,
     }}>
       {children}
     </AppContext.Provider>

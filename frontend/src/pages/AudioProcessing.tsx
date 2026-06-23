@@ -3,7 +3,7 @@ import axios from 'axios'
 import { useApp } from '../context/AppContext'
 
 export default function AudioProcessing() {
-  const { audioMeta, setAudioMeta, setWaveformPeaks } = useApp()
+  const { audioMeta, setAudioMeta, setWaveformPeaks, setAudioObjectUrl } = useApp()
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -17,6 +17,9 @@ export default function AudioProcessing() {
       form.append('file', file)
       const { data: meta } = await axios.post('/api/audio/upload', form)
       setAudioMeta(meta)
+
+      // Store a browser-side ObjectURL so the player can stream directly
+      setAudioObjectUrl(URL.createObjectURL(file))
 
       // Fetch waveform peaks
       const { data: wf } = await axios.get(`/api/audio/${meta.audio_id}/waveform?points=300`)

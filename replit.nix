@@ -1,0 +1,35 @@
+{pkgs}: {
+  deps = [
+    pkgs.wkhtmltopdf
+    pkgs.harfbuzz
+    pkgs.freetype
+    pkgs.fontconfig
+    pkgs.xorg.libxshmfence
+    pkgs.xorg.libXScrnSaver
+    pkgs.xorg.libXrender
+    pkgs.xorg.libXcursor
+    pkgs.xorg.libXi
+    pkgs.libxkbcommon
+    pkgs.libgbm
+    pkgs.libGL
+    pkgs.libdrm
+    pkgs.mesa
+    pkgs.xorg.libXext
+    pkgs.xorg.libxcb
+    pkgs.xorg.libX11
+    pkgs.expat
+    pkgs.glib
+    pkgs.dbus
+    pkgs.alsa-lib
+    pkgs.cairo
+    pkgs.pango
+    pkgs.xorg.libXrandr
+    pkgs.xorg.libXfixes
+    pkgs.xorg.libXdamage
+    pkgs.xorg.libXcomposite
+    pkgs.cups
+    pkgs.atk
+    pkgs.nspr
+    pkgs.nss
+  ];
+}

@@ -30,6 +30,14 @@ export interface DetectionResult {
   completed_at: string
 }
 
+export interface ConversionJob {
+  job_id: string
+  format: string
+  filename: string
+  status: 'running' | 'done' | 'failed'
+  error?: string | null
+}
+
 interface AppState {
   audioMeta: AudioMeta | null
   setAudioMeta: (m: AudioMeta | null) => void
@@ -41,6 +49,9 @@ interface AppState {
   setSelectedKit: (k: string | null) => void
   audioObjectUrl: string | null
   setAudioObjectUrl: (url: string | null) => void
+  conversionJobs: ConversionJob[]
+  addConversionJob: (job: ConversionJob) => void
+  updateConversionJob: (job_id: string, patch: Partial<ConversionJob>) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -51,12 +62,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null)
   const [selectedKit, setSelectedKit] = useState<string | null>(null)
   const [audioObjectUrl, _setAudioObjectUrl] = useState<string | null>(null)
+  const [conversionJobs, setConversionJobs] = useState<ConversionJob[]>([])
   const prevUrlRef = useRef<string | null>(null)
 
   function setAudioObjectUrl(url: string | null) {
     if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
     prevUrlRef.current = url
     _setAudioObjectUrl(url)
+  }
+
+  function addConversionJob(job: ConversionJob) {
+    setConversionJobs(prev => [job, ...prev])
+  }
+
+  function updateConversionJob(job_id: string, patch: Partial<ConversionJob>) {
+    setConversionJobs(prev =>
+      prev.map(j => j.job_id === job_id ? { ...j, ...patch } : j)
+    )
   }
 
   return (
@@ -66,6 +88,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       detectionResult, setDetectionResult,
       selectedKit, setSelectedKit,
       audioObjectUrl, setAudioObjectUrl,
+      conversionJobs, addConversionJob, updateConversionJob,
     }}>
       {children}
     </AppContext.Provider>

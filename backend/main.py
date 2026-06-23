@@ -14,6 +14,7 @@ from engines.audio_engine import AudioEngine
 from engines.hit_detection_engine import HitDetectionEngine
 from engines.midi_export_engine import MidiExportEngine
 from engines.replacement_engine import DrumReplacementEngine
+from engines.conversion_engine import ConversionEngine
 
 app = FastAPI(title="DrumTracker API", version="1.0.0")
 
@@ -28,6 +29,7 @@ audio_engine = AudioEngine()
 hit_engine = HitDetectionEngine()
 midi_engine = MidiExportEngine()
 replacement_engine = DrumReplacementEngine()
+conversion_engine = ConversionEngine()
 
 # In-memory session store
 _audio_sessions: dict = {}   # audio_id -> AudioMetadata
@@ -173,6 +175,70 @@ async def export_midi(detection_id: str, tempo: int = 120):
         headers={
             "Content-Disposition": f'attachment; filename="drumtracker_{detection_id[:8]}.mid"'
         },
+    )
+
+
+# ── Format Conversion (FFmpeg background jobs) ─────────────────────────────────
+
+from pydantic import BaseModel as _BM2
+
+class ConvertRequest(_BM2):
+    audio_id: str
+    target_format: str = "mp3"
+    bitrate: str = "192k"
+
+
+@app.post("/api/convert/start")
+async def start_conversion(req: ConvertRequest):
+    try:
+        y, sr = audio_engine.get_audio(req.audio_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
+
+    meta = _audio_sessions.get(req.audio_id)
+    source_name = meta.file_name if meta else "audio"
+
+    try:
+        job_id = await conversion_engine.start_job(
+            y=y, sr=sr,
+            source_filename=source_name,
+            target_format=req.target_format,
+            bitrate=req.bitrate,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return {"job_id": job_id, "status": "running", "format": req.target_format}
+
+
+@app.get("/api/convert/{job_id}/status")
+async def conversion_status(job_id: str):
+    job = conversion_engine.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return {
+        "job_id":   job["job_id"],
+        "status":   job["status"],
+        "format":   job["format"],
+        "filename": job["filename"],
+        "error":    job.get("error"),
+    }
+
+
+@app.get("/api/convert/{job_id}/download")
+async def download_conversion(job_id: str):
+    job = conversion_engine.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail=f"Job is {job['status']}, not done yet.")
+    path = job["output_path"]
+    if not Path(path).exists():
+        raise HTTPException(status_code=410, detail="Output file no longer available.")
+    return FileResponse(
+        path=path,
+        media_type="application/octet-stream",
+        filename=job["filename"],
     )
 
 

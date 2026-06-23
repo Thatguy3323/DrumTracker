@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/Backend/">
+    <Project Path="Backend/DrumTracker.Backend.csproj" />
+  </Folder>
+  <Folder Name="/Desktop/">
+    <Project Path="Desktop/DrumTracker.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/Shared/">
+    <Project Path="Shared/DrumTracker.Shared.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,107 @@
+<Window x:Class="DrumTracker.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DrumTracker - Audio In. MIDI Out. Perfect Every Time."
+        Height="800"
+        Width="1400"
+        MinHeight="600"
+        MinWidth="1000"
+        Background="{StaticResource Brush.BackgroundPrimary}"
+        Foreground="{StaticResource Brush.TextPrimary}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <!-- Local Resources -->
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar Navigation -->
+        <Border Grid.Column="0"
+                Background="{StaticResource Brush.BackgroundSecondary}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="0,0,1,0">
+            
+            <StackPanel Orientation="Vertical"
+                       Margin="16">
+                <!-- Logo/Title -->
+                <TextBlock Text="DrumTracker"
+                          FontFamily="Orbitron"
+                          FontSize="20"
+                          FontWeight="Bold"
+                          Foreground="{StaticResource Brush.Primary}"
+                          Margin="0,0,0,24"/>
+
+                <!-- Navigation Links -->
+                <Button Content="🏠 Home"
+                       Style="{StaticResource NavButton}"
+                       Tag="Home"
+                       Margin="0,0,0,8"/>
+                
+                <Button Content="📁 Audio Processing"
+                       Style="{StaticResource NavButton}"
+                       Tag="AudioProcessing"
+                       Margin="0,0,0,8"/>
+                
+                <Button Content="🎯 Hit Detection"
+                       Style="{StaticResource NavButton}"
+                       Tag="HitDetection"
+                       Margin="0,0,0,8"/>
+                
+                <Button Content="🤖 AI Kits"
+                       Style="{StaticResource NavButton}"
+                       Tag="AIKits"
+                       Margin="0,0,0,8"/>
+                
+                <Button Content="🥁 Drum Replacement"
+                       Style="{StaticResource NavButton}"
+                       Tag="DrumReplacement"
+                       Margin="0,0,0,8"/>
+                
+                <Button Content="🎵 MIDI Export"
+                       Style="{StaticResource NavButton}"
+                       Tag="MIDIExport"
+                       Margin="0,0,0,8"/>
+                
+                <Separator Margin="0,16,0,16"/>
+                
+                <Button Content="⚙️ Settings"
+                       Style="{StaticResource NavButton}"
+                       Tag="Settings"
+                       Margin="0,0,0,8"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content Area -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="60"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Top Bar -->
+            <Border Grid.Row="0"
+                   Background="{StaticResource Brush.BackgroundSecondary}"
+                   BorderBrush="{StaticResource Brush.Border}"
+                   BorderThickness="0,0,0,1">
+                <Grid Margin="24,0,24,0">
+                    <TextBlock x:Name="PageTitle"
+                              Text="Welcome to DrumTracker"
+                              FontSize="18"
+                              FontWeight="Bold"
+                              Foreground="{StaticResource Brush.TextPrimary}"
+                              VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <!-- Content Container -->
+            <ContentPresenter Grid.Row="1"
+                            x:Name="ContentPresenter"
+                            Margin="0,0,0,0"/>
+        </Grid>
+    </Grid>
+</Window>

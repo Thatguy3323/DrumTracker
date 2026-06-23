@@ -1,0 +1,95 @@
+DrumTracker.UI/
+  App.xaml
+  App.xaml.cs
+  MainWindow.xaml
+  MainWindow.xaml.cs
+
+  Resources/
+    Colors.xaml
+    Styles.xaml
+    Brushes.xaml
+    Icons.xaml
+
+  Shell/
+    ShellView.xaml
+    ShellView.xaml.cs
+    ShellViewModel.cs
+    PageKey.cs
+    Sidebar.xaml
+    Sidebar.xaml.cs
+    Topbar.xaml
+    Topbar.xaml.cs
+
+  Navigation/
+    INavigationService.cs
+    NavigationService.cs
+    PageViewModel.cs
+
+  Pages/
+    Home/
+      HomeView.xaml
+      HomeView.xaml.cs
+      HomeViewModel.cs
+    AudioProcessing/
+      AudioProcessingView.xaml
+      AudioProcessingView.xaml.cs
+      AudioProcessingViewModel.cs
+    HitDetection/
+      HitDetectionView.xaml
+      HitDetectionView.xaml.cs
+      HitDetectionViewModel.cs
+    AIKits/
+      AIKitsView.xaml
+      AIKitsView.xaml.cs
+      AIKitsViewModel.cs
+    DrumReplacement/
+      DrumReplacementView.xaml
+      DrumReplacementView.xaml.cs
+      DrumReplacementViewModel.cs
+    Waveform/
+      WaveformPageView.xaml
+      WaveformPageView.xaml.cs
+      WaveformPageViewModel.cs
+      WaveformControl.xaml
+      WaveformControl.xaml.cs
+    MIDIExport/
+      MIDIExportView.xaml
+      MIDIExportView.xaml.cs
+      MIDIExportViewModel.cs
+    Settings/
+      SettingsWindow.xaml
+      SettingsWindow.xaml.cs
+      SettingsViewModel.cs
+
+  Controls/
+    AudioUploadControl.xaml
+    AudioUploadControl.xaml.cs
+    DrumKitPreview.xaml
+    DrumKitPreview.xaml.cs
+    HitDetectionGrid.xaml
+    HitDetectionGrid.xaml.cs
+    MIDIExportPanel.xaml
+    MIDIExportPanel.xaml.cs
+
+  Services/
+    IApiService.cs
+    ApiService.cs
+    AudioFileService.cs
+    ProjectService.cs
+
+  Models/
+    AudioFile.cs
+    DrumKit.cs
+    HitDetectionResult.cs
+    MIDIExportSettings.cs
+    Project.cs
+
+  Utils/
+    RelayCommand.cs
+    ViewModelBase.cs
+    Constants.cs
+    Extensions.cs
+    Converters.cs
+
+  DrumTracker.UI.csproj
+  app.config

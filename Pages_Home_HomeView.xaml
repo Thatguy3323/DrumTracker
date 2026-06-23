@@ -1,0 +1,84 @@
+<UserControl x:Class="DrumTracer.UI.Pages.Home.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource Brush.BackgroundPrimary}">
+  <Grid Margin="72,16,16,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <TextBlock Text="DrumTracer"
+               FontFamily="Orbitron"
+               FontSize="24"
+               Foreground="{StaticResource Brush.Primary}"
+               Margin="0,0,0,8"/>
+
+    <TextBlock Text="Audio to MIDI Conversion"
+               Grid.Row="0"
+               Margin="0,28,0,16"
+               Foreground="{StaticResource Brush.TextSecondary}"/>
+
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="2*"/>
+        <ColumnDefinition Width="3*"/>
+      </Grid.ColumnDefinitions>
+
+      <!-- Left: controls -->
+      <StackPanel Grid.Column="0" Margin="0,0,16,0">
+        <TextBlock Text="Source Audio"
+                   Foreground="{StaticResource Brush.TextSecondary}"/>
+        <TextBox Text="{Binding SourcePath}"
+                 IsReadOnly="True"
+                 Background="{StaticResource Brush.BackgroundPanel}"
+                 Foreground="{StaticResource Brush.TextPrimary}"
+                 BorderBrush="{StaticResource Brush.Border}"
+                 Margin="0,4,0,8"/>
+        <StackPanel Orientation="Horizontal">
+          <Button Content="Browse..."
+                  Command="{Binding BrowseCommand}"
+                  Margin="0,0,8,0"/>
+          <Button Content="Clear"
+                  Command="{Binding ClearCommand}"
+                  Background="{StaticResource Brush.Error}"
+                  Foreground="{StaticResource Brush.TextPrimary}"/>
+        </StackPanel>
+
+        <TextBlock Text="Output MIDI Path"
+                   Margin="0,16,0,0"
+                   Foreground="{StaticResource Brush.TextSecondary}"/>
+        <TextBox Text="{Binding OutputPath}"
+                 Background="{StaticResource Brush.BackgroundPanel}"
+                 Foreground="{StaticResource Brush.TextPrimary}"
+                 BorderBrush="{StaticResource Brush.Border}"
+                 Margin="0,4,0,8"/>
+
+        <Button Content="Convert to MIDI"
+                Command="{Binding ConvertCommand}"
+                Background="{StaticResource Brush.Primary}"
+                Foreground="{StaticResource Brush.BackgroundPrimary}"
+                Margin="0,16,0,0"/>
+
+        <ProgressBar Minimum="0" Maximum="1"
+                     Value="{Binding Progress}"
+                     Height="6"
+                     Margin="0,16,0,0"/>
+        <TextBlock Text="{Binding Status}"
+                   Margin="0,4,0,0"
+                   Foreground="{StaticResource Brush.TextSecondary}"/>
+      </StackPanel>
+
+      <!-- Right: waveform preview (reuse WaveformControl later) -->
+      <Border Grid.Column="1"
+              Background="{StaticResource Brush.BackgroundPanel}"
+              BorderBrush="{StaticResource Brush.Border}"
+              BorderThickness="1">
+        <TextBlock Text="Waveform Preview"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource Brush.TextMuted}"/>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

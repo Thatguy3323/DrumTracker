@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Core palette -->
+  <Color x:Key="Color.BackgroundPrimary">#050608</Color>
+  <Color x:Key="Color.BackgroundPanel">#101218</Color>
+  <Color x:Key="Color.BackgroundCard">#141824</Color>
+  <Color x:Key="Color.Border">#1E2230</Color>
+
+  <Color x:Key="Color.TextPrimary">#FFFFFF</Color>
+  <Color x:Key="Color.TextSecondary">#A4A9B8</Color>
+  <Color x:Key="Color.TextMuted">#5C6270</Color>
+
+  <Color x:Key="Color.Primary">#00FF7F</Color>   <!-- Neon Green -->
+  <Color x:Key="Color.Secondary">#00C8FF</Color> <!-- Electric Cyan -->
+  <Color x:Key="Color.Tertiary">#FF7A00</Color>  <!-- Deep Orange -->
+  <Color x:Key="Color.Error">#FF0033</Color>     <!-- Blood Red -->
+
+  <!-- Brushes -->
+  <SolidColorBrush x:Key="Brush.BackgroundPrimary" Color="{StaticResource Color.BackgroundPrimary}" />
+  <SolidColorBrush x:Key="Brush.BackgroundPanel" Color="{StaticResource Color.BackgroundPanel}" />
+  <SolidColorBrush x:Key="Brush.BackgroundCard" Color="{StaticResource Color.BackgroundCard}" />
+  <SolidColorBrush x:Key="Brush.Border" Color="{StaticResource Color.Border}" />
+
+  <SolidColorBrush x:Key="Brush.TextPrimary" Color="{StaticResource Color.TextPrimary}" />
+  <SolidColorBrush x:Key="Brush.TextSecondary" Color="{StaticResource Color.TextSecondary}" />
+  <SolidColorBrush x:Key="Brush.TextMuted" Color="{StaticResource Color.TextMuted}" />
+
+  <SolidColorBrush x:Key="Brush.Primary" Color="{StaticResource Color.Primary}" />
+  <SolidColorBrush x:Key="Brush.Secondary" Color="{StaticResource Color.Secondary}" />
+  <SolidColorBrush x:Key="Brush.Tertiary" Color="{StaticResource Color.Tertiary}" />
+  <SolidColorBrush x:Key="Brush.Error" Color="{StaticResource Color.Error}" />
+</ResourceDictionary>

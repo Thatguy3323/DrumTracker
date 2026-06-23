@@ -11,25 +11,47 @@ packages = ["ffmpeg-full", "libsndfile", "libxcrypt", "pkg-config", "xsimd"]
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "Project"
+name = "Start application"
 mode = "parallel"
 author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
-
-[[workflows.workflow]]
-name = "Start application"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "(cd backend && python3 -m uvicorn main:app --host 127.0.0.1 --port 8080) & (cd frontend && npm run dev)"
 waitForPort = 5000
+
+[[workflows.workflow.tasks]]
+task = "packager.installForLanguage"
+args = "dotnet"
+
+[[workflows.workflow.tasks]]
+task = "packager.installForLanguage"
+args = "python3"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "artifacts/mockup-sandbox: Component Preview Server"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/mockup-sandbox"
+isCanvasWorkflow = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+cwd = "./artifacts/mockup-sandbox"
+waitForPort = 23636
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "23636"
+BASE_PATH = "/__mockup/"
 
 [[ports]]
 localPort = 5000

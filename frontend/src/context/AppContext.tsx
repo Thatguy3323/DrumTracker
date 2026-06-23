@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef, ReactNode } from 'react'
+import { createContext, useContext, useState, useRef, ReactNode, MutableRefObject } from 'react'
 
 export interface AudioMeta {
   audio_id: string
@@ -52,6 +52,9 @@ interface AppState {
   conversionJobs: ConversionJob[]
   addConversionJob: (job: ConversionJob) => void
   updateConversionJob: (job_id: string, patch: Partial<ConversionJob>) => void
+  currentTime: number
+  setCurrentTime: (t: number) => void
+  seekRef: MutableRefObject<((t: number) => void) | null>
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -63,6 +66,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedKit, setSelectedKit] = useState<string | null>(null)
   const [audioObjectUrl, _setAudioObjectUrl] = useState<string | null>(null)
   const [conversionJobs, setConversionJobs] = useState<ConversionJob[]>([])
+  const [currentTime, setCurrentTime] = useState(0)
+  const seekRef = useRef<((t: number) => void) | null>(null)
   const prevUrlRef = useRef<string | null>(null)
 
   function setAudioObjectUrl(url: string | null) {
@@ -89,6 +94,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectedKit, setSelectedKit,
       audioObjectUrl, setAudioObjectUrl,
       conversionJobs, addConversionJob, updateConversionJob,
+      currentTime, setCurrentTime,
+      seekRef,
     }}>
       {children}
     </AppContext.Provider>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 
+
 function fmt(s: number) {
   if (!isFinite(s)) return '0:00'
   const m = Math.floor(s / 60)
@@ -9,13 +10,25 @@ function fmt(s: number) {
 }
 
 export default function AudioPlayer() {
-  const { audioMeta, audioObjectUrl, waveformPeaks } = useApp()
+  const { audioMeta, audioObjectUrl, waveformPeaks, setCurrentTime: setGlobalTime, seekRef } = useApp()
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying]       = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration]     = useState(0)
   const [dragging, setDragging]     = useState(false)
   const progressRef = useRef<HTMLDivElement>(null)
+
+  // Register seek function in shared ref so waveform can trigger seek
+  useEffect(() => {
+    seekRef.current = (t: number) => {
+      const el = audioRef.current
+      if (!el) return
+      el.currentTime = t
+      setCurrentTime(t)
+      setGlobalTime(t)
+    }
+    return () => { seekRef.current = null }
+  }, [seekRef, setGlobalTime])
 
   // Sync src when URL changes
   useEffect(() => {
@@ -25,8 +38,9 @@ export default function AudioPlayer() {
     el.load()
     setPlaying(false)
     setCurrentTime(0)
+    setGlobalTime(0)
     setDuration(0)
-  }, [audioObjectUrl])
+  }, [audioObjectUrl, setGlobalTime])
 
   if (!audioObjectUrl || !audioMeta) return null
 
@@ -41,8 +55,10 @@ export default function AudioPlayer() {
     if (!el || !progressRef.current || !duration) return
     const rect = progressRef.current.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    el.currentTime = ratio * duration
-    setCurrentTime(ratio * duration)
+    const t = ratio * duration
+    el.currentTime = t
+    setCurrentTime(t)
+    setGlobalTime(t)
   }
 
   const progress = duration > 0 ? currentTime / duration : 0
@@ -65,7 +81,11 @@ export default function AudioPlayer() {
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setCurrentTime(0) }}
-        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
+        onTimeUpdate={() => {
+          const t = audioRef.current?.currentTime ?? 0
+          setCurrentTime(t)
+          setGlobalTime(t)
+        }}
         onDurationChange={() => setDuration(audioRef.current?.duration ?? 0)}
         onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
       />

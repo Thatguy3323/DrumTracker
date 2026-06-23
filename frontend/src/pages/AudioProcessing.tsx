@@ -127,19 +127,46 @@ function AudioMetaCard({ meta }: { meta: ReturnType<typeof useApp>['audioMeta'] 
   )
 }
 
+const DRUM_COLORS: Record<string, string> = {
+  kick:  '#FF2244',
+  snare: '#00C8FF',
+  hihat: '#00FF7F',
+  tom:   '#FF7A00',
+}
+
 function WaveformDisplay() {
-  const { waveformPeaks } = useApp()
+  const { waveformPeaks, audioMeta, detectionResult, currentTime, seekRef } = useApp()
+  const svgRef = useRef<SVGSVGElement>(null)
+
   if (!waveformPeaks.length) return null
 
-  const W = 720, H = 80
+  const W = 720, H = 100
   const mid = H / 2
   const barW = W / waveformPeaks.length
+  const duration = audioMeta?.duration ?? 0
+  const progress = duration > 0 ? currentTime / duration : 0
+
+  function handleClick(e: React.MouseEvent<SVGSVGElement>) {
+    if (!svgRef.current || !duration) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    seekRef.current?.(ratio * duration)
+  }
 
   return (
     <div style={{ background: 'var(--bg-panel)', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block', height: 80 }}>
+      <svg
+        ref={svgRef}
+        width="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ display: 'block', height: H, cursor: duration > 0 ? 'pointer' : 'default' }}
+        onClick={handleClick}
+      >
+        {/* Waveform bars — played portion is brighter */}
         {waveformPeaks.map((p, i) => {
-          const h = Math.max(1, p * mid * 0.95)
+          const h = Math.max(1, p * mid * 0.9)
+          const played = i / waveformPeaks.length < progress
           return (
             <rect
               key={i}
@@ -147,14 +174,64 @@ function WaveformDisplay() {
               y={mid - h}
               width={Math.max(1, barW - 0.5)}
               height={h * 2}
-              fill="rgba(0,200,255,0.6)"
+              fill={played ? 'rgba(0,200,255,0.9)' : 'rgba(0,200,255,0.35)'}
               rx={0.5}
             />
           )
         })}
+
         {/* Center line */}
-        <line x1={0} y1={mid} x2={W} y2={mid} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+        <line x1={0} y1={mid} x2={W} y2={mid} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+
+        {/* Hit markers — colored vertical lines per drum type */}
+        {detectionResult && duration > 0 && detectionResult.hits.map(hit => {
+          const x = (hit.timestamp / duration) * W
+          const color = DRUM_COLORS[hit.drum_type] ?? 'rgba(255,255,255,0.6)'
+          const alpha = 0.55 + hit.confidence * 0.45
+          return (
+            <line
+              key={hit.id}
+              x1={x} y1={4}
+              x2={x} y2={H - 4}
+              stroke={color}
+              strokeWidth={1.5}
+              opacity={alpha}
+            />
+          )
+        })}
+
+        {/* Playhead needle */}
+        {duration > 0 && (
+          <rect
+            x={progress * W - 1}
+            y={0}
+            width={2}
+            height={H}
+            fill="rgba(255,255,255,0.9)"
+            rx={1}
+          />
+        )}
       </svg>
+
+      {/* Legend + timestamp row */}
+      {detectionResult && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '5px 10px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          {Object.entries(DRUM_COLORS).map(([type, color]) => {
+            const count = detectionResult.hits_by_type[type] ?? 0
+            if (!count) return null
+            return (
+              <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 2, height: 12, background: color, borderRadius: 1, display: 'inline-block', opacity: 0.9 }} />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{type}</span>
+                <span style={{ fontSize: 10, color, fontWeight: 600 }}>{count}</span>
+              </div>
+            )
+          })}
+          <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+            {currentTime.toFixed(2)}s / {duration.toFixed(2)}s
+          </span>
+        </div>
+      )}
     </div>
   )
 }

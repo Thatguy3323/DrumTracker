@@ -198,7 +198,7 @@ export default function KitManagerView() {
               justifyContent: 'center', gap: 12, padding: '60px 0',
               color: 'var(--text-muted)', textAlign: 'center',
             }}>
-              <div style={{ fontSize: 40, opacity: 0.15 }}>◉</div>
+              <img src="/drumtracker-logo.png" alt="DrumTracker" style={{ height: 52, opacity: 0.18, marginBottom: 4 }} />
               <div style={{ fontSize: 12 }}>Select a kit to view controls and note mapping.</div>
             </div>
           )}

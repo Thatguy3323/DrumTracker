@@ -149,7 +149,11 @@ function AudioInputPanel() {
               transition: 'all 0.15s ease',
             }}
           >
-            <div style={{ fontSize: 28, opacity: 0.4 }}>◈</div>
+            <img
+              src="/drumtracker-logo.png"
+              alt="DrumTracker"
+              style={{ height: 56, width: 'auto', opacity: 0.28, pointerEvents: 'none', marginBottom: 4 }}
+            />
             {loading ? (
               <div style={{ fontSize: 12, color: 'var(--color-primary)' }}>Analyzing…</div>
             ) : (
@@ -705,7 +709,7 @@ function KitPreviewPanel({ onNavigateToKits }: { onNavigateToKits: () => void })
           </>
         ) : (
           <>
-            <div style={{ fontSize: 28, opacity: 0.15 }}>◉</div>
+            <img src="/drumtracker-logo.png" alt="" style={{ height: 36, opacity: 0.18, marginBottom: 4 }} />
             <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>No kit selected</div>
           </>
         )}

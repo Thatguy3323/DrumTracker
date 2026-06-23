@@ -117,7 +117,10 @@ export default function SessionsModal({ onClose, onRestored }: Props) {
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}>
-          <span className="panel-label">SESSION HISTORY</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img src="/drumtracker-logo.png" alt="DrumTracker" style={{ height: 22, opacity: 0.85, filter: 'drop-shadow(0 0 4px rgba(0,255,65,0.3))' }} />
+            <span className="panel-label">SESSION HISTORY</span>
+          </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <input ref={importRef} type="file" accept=".zip" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) importSession(f) }} />

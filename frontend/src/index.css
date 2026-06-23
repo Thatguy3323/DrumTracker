@@ -1,50 +1,59 @@
-/* DrumTracker — DAW Design System */
+/* DrumTracker — Design System (spec v1.0) */
 :root {
-  --bg-primary: #0A0D12;
-  --bg-panel: #111620;
-  --bg-card: #161D2A;
-  --bg-raised: #1C2333;
-  --border: #1E2535;
-  --border-bright: #2A3348;
+  /* Backgrounds — from spec dt-bg / dt-surface / dt-card */
+  --bg-primary:  #0F0F1A;
+  --bg-panel:    #1A1A2E;
+  --bg-card:     #16213E;
+  --bg-raised:   #0D1021;
 
-  --text-primary: #E8EAF0;
-  --text-secondary: #8A91A8;
-  --text-muted: #4A5168;
+  /* Borders */
+  --border:        rgba(255,255,255,0.08);
+  --border-bright: rgba(255,255,255,0.14);
 
-  --color-primary: #00FF41;
-  --color-secondary: #00E5CC;
-  --color-tertiary: #FF7A00;
-  --color-error: #FF2244;
-  --color-warn: #FF9500;
+  /* Text — spec dt-text / dt-muted / dt-faint */
+  --text-primary:   #E2E8F0;
+  --text-secondary: #94A3B8;
+  --text-muted:     #475569;
 
-  --kick-color: #FF2244;
-  --snare-color: #00C8FF;
-  --hihat-color: #00FF41;
-  --tom-color: #FF7A00;
+  /* Accent palette — spec tokens */
+  --color-primary:      #F97316;          /* dt-accent  orange */
+  --color-primary-glow: rgba(249,115,22,0.35);
+  --color-secondary:    #3B82F6;          /* dt-blue    blue   */
+  --color-tertiary:     #22C55E;          /* dt-green   green  */
+  --color-error:        #EF4444;          /* dt-red           */
+  --color-warn:         #EAB308;          /* dt-yellow        */
 
-  --header-height: 44px;
-  --radius: 6px;
-  --radius-sm: 3px;
-  --radius-lg: 10px;
+  /* Drum-type colors (unchanged — visualisation only) */
+  --kick-color:  #EF4444;
+  --snare-color: #3B82F6;
+  --hihat-color: #22C55E;
+  --tom-color:   #F97316;
+
+  /* Layout */
+  --header-height: 48px;
+
+  /* Radius — spec scale */
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Elevation */
+  --shadow-card:  0 4px 16px rgba(0,0,0,0.4);
+  --shadow-glow:  0 0 20px var(--color-primary-glow);
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* ── Reset ────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body, #root {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
+html, body, #root { height: 100%; width: 100%; overflow: hidden; }
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 13px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -55,8 +64,8 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ── Typography utilities ──────────────────────── */
-.mono { font-family: 'JetBrains Mono', 'Fira Mono', monospace; }
-.orbitron { font-family: 'Orbitron', sans-serif; }
+.mono    { font-family: 'JetBrains Mono', 'Fira Mono', monospace; }
+.orbitron{ font-family: 'Orbitron', sans-serif; }
 
 /* ── Buttons ───────────────────────────────────── */
 button {
@@ -81,9 +90,10 @@ button {
 .btn-primary {
   background: var(--color-primary);
   color: #000;
+  font-weight: 600;
 }
-.btn-primary:hover { filter: brightness(1.1); }
-.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; filter: none; }
+.btn-primary:hover { background: #EA6A0A; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-secondary {
   background: var(--bg-card);
@@ -98,21 +108,19 @@ button {
 }
 .btn-ghost:hover { background: var(--bg-card); color: var(--text-primary); }
 
-.btn-danger {
-  background: var(--color-error);
-  color: white;
-}
-.btn-danger:hover { filter: brightness(1.15); }
+.btn-danger { background: var(--color-error); color: white; }
+.btn-danger:hover { filter: brightness(1.1); }
 
-/* ── Panels / cards ────────────────────────────── */
+/* ── Cards ─────────────────────────────────────── */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
+  box-shadow: var(--shadow-card);
 }
 
-/* ── Form inputs ───────────────────────────────── */
+/* ── Range inputs ──────────────────────────────── */
 input[type="range"] {
   appearance: none;
   -webkit-appearance: none;
@@ -124,76 +132,59 @@ input[type="range"] {
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 13px;
-  height: 13px;
+  width: 13px; height: 13px;
   border-radius: 50%;
   background: var(--color-primary);
   cursor: pointer;
-  box-shadow: 0 0 5px rgba(0,255,65,0.5);
+  box-shadow: 0 0 6px var(--color-primary-glow);
 }
 
 /* ── Progress bar ──────────────────────────────── */
-.progress-bar {
-  width: 100%;
-  height: 3px;
-  background: var(--border-bright);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.progress-bar-fill {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
+.progress-bar { width: 100%; height: 3px; background: var(--border-bright); border-radius: 2px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--color-primary); border-radius: 2px; transition: width 0.3s ease; }
 
 /* ── Labels ────────────────────────────────────── */
 label {
   display: block;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-muted);
   margin-bottom: 5px;
 }
 
 .panel-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--text-muted);
 }
 
 /* ── Section header ────────────────────────────── */
 .section-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   padding: 7px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
 }
 
-/* ── Glow effects ──────────────────────────────── */
-.glow-green { box-shadow: 0 0 16px rgba(0,255,65,0.12); }
-.glow-cyan  { box-shadow: 0 0 16px rgba(0,229,204,0.12); }
-
-/* ── Spinner ───────────────────────────────────── */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ── Glow utilities ────────────────────────────── */
+.glow-orange { box-shadow: 0 0 16px rgba(249,115,22,0.2); }
+.glow-blue   { box-shadow: 0 0 16px rgba(59,130,246,0.2); }
+.glow-green  { box-shadow: 0 0 16px rgba(34,197,94,0.2); }
 
 /* ── DAW dividers ──────────────────────────────── */
-.daw-divider-v {
-  width: 1px;
-  background: var(--border);
-  flex-shrink: 0;
+.daw-divider-v { width: 1px; background: var(--border); flex-shrink: 0; }
+.daw-divider-h { height: 1px; background: var(--border); flex-shrink: 0; }
+
+/* ── Animations ────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
 }
-.daw-divider-h {
-  height: 1px;
-  background: var(--border);
-  flex-shrink: 0;
+
+@keyframes record-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
 }

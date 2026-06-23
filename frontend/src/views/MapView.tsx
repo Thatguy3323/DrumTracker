@@ -47,7 +47,7 @@ export default function MapView() {
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', height: '100%', gap: 14,
       }}>
-        <div style={{ fontSize: 52, opacity: 0.15 }}>⊞</div>
+        <img src="/drumtracker-logo.png" alt="DrumTracker" style={{ height: 64, opacity: 0.2, marginBottom: 8 }} />
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No detection data. Run detection on the DETECT tab first.</div>
       </div>
     )

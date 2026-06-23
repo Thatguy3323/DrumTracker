@@ -33,22 +33,16 @@ export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: P
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 9,
-        padding: '0 18px',
+        padding: '0 14px',
         borderRight: '1px solid var(--border)',
-        minWidth: 168,
+        minWidth: 148,
         flexShrink: 0,
       }}>
-        <DrumSvg />
-        <span style={{
-          fontFamily: 'Orbitron, sans-serif',
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.12em',
-          color: 'var(--color-primary)',
-        }}>
-          DRUM<span style={{ color: 'var(--text-muted)' }}>TRACKER</span>
-        </span>
+        <img
+          src="/drumtracker-logo.png"
+          alt="DrumTracker"
+          style={{ height: 30, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 0 8px rgba(0,200,255,0.4))' }}
+        />
       </div>
 
       {/* Tabs */}
@@ -63,7 +57,7 @@ export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: P
                 display: 'flex',
                 alignItems: 'center',
                 padding: '0 22px',
-                background: active ? 'rgba(0,255,65,0.06)' : 'transparent',
+                background: active ? 'rgba(249,115,22,0.07)' : 'transparent',
                 borderBottom: `2px solid ${active ? 'var(--color-primary)' : 'transparent'}`,
                 borderRight: '1px solid var(--border)',
                 color: active ? 'var(--color-primary)' : 'var(--text-muted)',
@@ -107,7 +101,7 @@ export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: P
           <Pill color="var(--color-tertiary)">
             <span style={{
               display: 'inline-block', width: 8, height: 8, flexShrink: 0,
-              border: '1.5px solid rgba(255,122,0,0.3)', borderTopColor: 'var(--color-tertiary)',
+              border: '1.5px solid rgba(34,197,94,0.2)', borderTopColor: 'var(--color-tertiary)',
               borderRadius: '50%', animation: 'spin 0.8s linear infinite',
             }} />
             {runningJobs.length} converting
@@ -155,13 +149,4 @@ function Pill({ color, children }: { color: string; children: ReactNode }) {
   )
 }
 
-function DrumSvg() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-      <ellipse cx="10" cy="7.5" rx="7" ry="3" stroke="var(--color-primary)" strokeWidth="1.4" />
-      <line x1="3" y1="7.5" x2="3" y2="13.5" stroke="var(--color-primary)" strokeWidth="1.4" />
-      <line x1="17" y1="7.5" x2="17" y2="13.5" stroke="var(--color-primary)" strokeWidth="1.4" />
-      <ellipse cx="10" cy="13.5" rx="7" ry="3" stroke="var(--color-primary)" strokeWidth="1.4" fill="rgba(0,255,65,0.05)" />
-    </svg>
-  )
-}
+

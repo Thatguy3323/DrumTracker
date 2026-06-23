@@ -372,6 +372,90 @@ async def download_conversion(job_id: str):
     )
 
 
+# ── Session Import ─────────────────────────────────────────────────────────────
+
+@app.post("/api/sessions/import")
+async def import_session(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=422, detail="File must be a .zip archive.")
+
+    content = await file.read()
+    try:
+        buf = io.BytesIO(content)
+        zf = zipfile.ZipFile(buf, "r")
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Not a valid ZIP file.")
+
+    names = zf.namelist()
+    audio_name = next(
+        (n for n in names if not n.lower().endswith(".json") and "." in n),
+        None,
+    )
+    hits_name = next((n for n in names if n.lower().endswith(".json")), None)
+
+    if not audio_name:
+        raise HTTPException(status_code=422, detail="ZIP does not contain an audio file.")
+    if not hits_name:
+        raise HTTPException(status_code=422, detail="ZIP does not contain a hits JSON file.")
+
+    audio_bytes = zf.read(audio_name)
+    hits_bytes = zf.read(hits_name)
+
+    try:
+        hits_data = json.loads(hits_bytes.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Could not parse hits JSON in ZIP.")
+
+    # Load audio into engine under a fresh ID
+    try:
+        meta = await audio_engine.load_from_bytes(audio_bytes, audio_name)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not decode audio: {e}")
+
+    new_audio_id = meta["audio_id"]
+    audio_path = str(UPLOADS_DIR / f"{new_audio_id}{Path(audio_name).suffix}")
+    with open(audio_path, "wb") as f:
+        f.write(audio_bytes)
+    save_audio_session(meta, audio_path=audio_path)
+
+    new_detection_id = str(uuid.uuid4())
+    imported_at = datetime.utcnow().isoformat()
+
+    hits_list = hits_data.get("hits", [])
+    hits_by_type: dict = {}
+    for h in hits_list:
+        dt = h.get("drum_type", "unknown")
+        hits_by_type[dt] = hits_by_type.get(dt, 0) + 1
+
+    total_hits = hits_data.get("total_hits", len(hits_list))
+    confidence = hits_data.get("confidence", 0.0)
+    processing_time = hits_data.get("processing_time", 0.0)
+
+    detection_payload = {
+        "detection_id": new_detection_id,
+        "audio_id": new_audio_id,
+        "total_hits": total_hits,
+        "hits_by_type": hits_by_type,
+        "confidence": confidence,
+        "processing_time": processing_time,
+        "hits": hits_list,
+        "completed_at": imported_at,
+    }
+    save_detection_session(detection_payload)
+
+    asyncio.create_task(_schedule_cleanup())
+
+    return {
+        "detection_id": new_detection_id,
+        "audio_id": new_audio_id,
+        "file_name": meta.get("file_name", audio_name),
+        "total_hits": total_hits,
+        "confidence": confidence,
+        "completed_at": imported_at,
+        "duration": meta.get("duration", 0),
+    }
+
+
 # ── Health ─────────────────────────────────────────────────────────────────────
 
 @app.get("/health")

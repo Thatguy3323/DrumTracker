@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
@@ -29,6 +29,9 @@ export default function Sessions() {
   const [error, setError] = useState('')
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importSuccess, setImportSuccess] = useState('')
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchSessions()
@@ -68,6 +71,26 @@ export default function Sessions() {
     }
   }
 
+  async function importSession(file: File) {
+    setImporting(true)
+    setError('')
+    setImportSuccess('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      await axios.post('/api/sessions/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setImportSuccess('Session imported successfully.')
+      await fetchSessions()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? 'Failed to import session.')
+    } finally {
+      setImporting(false)
+      if (importInputRef.current) importInputRef.current.value = ''
+    }
+  }
+
   async function loadSession(detectionId: string, audioId: string) {
     setLoadingId(detectionId)
     try {
@@ -94,13 +117,40 @@ export default function Sessions() {
     <div style={{ maxWidth: 900 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Session History</h2>
-        <button className="btn btn-secondary" onClick={fetchSessions} style={{ fontSize: 12 }}>
-          ↺ Refresh
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".zip"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) importSession(f)
+            }}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            style={{ fontSize: 12 }}
+            title="Import a previously exported .zip session backup"
+          >
+            {importing ? <><Spinner /> Importing…</> : '⬆ Import session'}
+          </button>
+          <button className="btn btn-secondary" onClick={fetchSessions} style={{ fontSize: 12 }}>
+            ↺ Refresh
+          </button>
+        </div>
       </div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 28, fontSize: 13 }}>
         Previously detected sessions are stored in SQLite and survive server restarts. Click a session to restore it.
       </p>
+
+      {importSuccess && (
+        <div style={{ padding: '10px 14px', background: 'rgba(0,200,127,0.1)', border: '1px solid var(--color-secondary)', borderRadius: 6, color: 'var(--color-secondary)', marginBottom: 20, fontSize: 13 }}>
+          {importSuccess}
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: '10px 14px', background: 'rgba(255,0,51,0.1)', border: '1px solid var(--color-error)', borderRadius: 6, color: 'var(--color-error)', marginBottom: 20, fontSize: 13 }}>

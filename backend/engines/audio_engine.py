@@ -46,6 +46,19 @@ class AudioEngine:
             "total_frames": total_frames,
         }
 
+    async def load_from_bytes_with_id(self, file_bytes: bytes, filename: str, audio_id: str) -> None:
+        if not self.is_ready:
+            await self.initialize()
+
+        ext = os.path.splitext(filename)[1].lower().lstrip(".")
+        buf = io.BytesIO(file_bytes)
+
+        y, sr = librosa.load(buf, sr=None, mono=False)
+        if y.ndim > 1:
+            y = librosa.to_mono(y)
+
+        self._cache[audio_id] = (y, sr)
+
     def get_audio(self, audio_id: str) -> Tuple[np.ndarray, int]:
         if audio_id not in self._cache:
             raise ValueError(f"Audio ID {audio_id} not found in cache")

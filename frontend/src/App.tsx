@@ -8,15 +8,17 @@ import HitDetection from './pages/HitDetection'
 import AIKits from './pages/AIKits'
 import DrumReplacement from './pages/DrumReplacement'
 import MidiExport from './pages/MidiExport'
+import Sessions from './pages/Sessions'
 import { AppProvider } from './context/AppContext'
 
 const ROUTES = [
-  { path: '/',            label: 'Home',              icon: '⌂' },
-  { path: '/audio',       label: 'Audio Processing',  icon: '◈' },
-  { path: '/detection',   label: 'Hit Detection',     icon: '◎' },
-  { path: '/kits',        label: 'AI Kits',           icon: '◉' },
-  { path: '/replacement', label: 'Drum Replacement',  icon: '🥁' },
-  { path: '/export',      label: 'MIDI Export',       icon: '↗' },
+  { path: '/',            label: 'Home',             icon: '⌂' },
+  { path: '/audio',       label: 'Audio Processing', icon: '◈' },
+  { path: '/detection',   label: 'Hit Detection',    icon: '◎' },
+  { path: '/sessions',    label: 'Sessions',         icon: '◷' },
+  { path: '/kits',        label: 'AI Kits',          icon: '◉' },
+  { path: '/replacement', label: 'Drum Replacement', icon: '🥁' },
+  { path: '/export',      label: 'MIDI Export',      icon: '↗' },
 ]
 
 export { ROUTES }
@@ -38,6 +40,7 @@ export default function App() {
               <Route path="/"            element={<Home />} />
               <Route path="/audio"       element={<AudioProcessing />} />
               <Route path="/detection"   element={<HitDetection />} />
+              <Route path="/sessions"    element={<Sessions />} />
               <Route path="/kits"        element={<AIKits />} />
               <Route path="/replacement" element={<DrumReplacement />} />
               <Route path="/export"      element={<MidiExport />} />

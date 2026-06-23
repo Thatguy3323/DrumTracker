@@ -11,6 +11,7 @@ interface SessionSummary {
   confidence: number
   completed_at: string
   duration: number
+  audio_available: boolean
 }
 
 const DRUM_COLORS: Record<string, string> = {
@@ -181,6 +182,7 @@ export default function Sessions() {
               downloading={downloadingId === s.detection_id}
               onLoad={() => loadSession(s.detection_id, s.audio_id)}
               onDownload={() => downloadSession(s.detection_id, s.file_name)}
+              audioAvailable={s.audio_available}
             />
           ))}
         </div>
@@ -189,12 +191,13 @@ export default function Sessions() {
   )
 }
 
-function SessionCard({ session: s, loading, downloading, onLoad, onDownload }: {
+function SessionCard({ session: s, loading, downloading, onLoad, onDownload, audioAvailable }: {
   session: SessionSummary
   loading: boolean
   downloading: boolean
   onLoad: () => void
   onDownload: () => void
+  audioAvailable: boolean
 }) {
   const date = s.completed_at
     ? new Date(s.completed_at + (s.completed_at.endsWith('Z') ? '' : 'Z')).toLocaleString()
@@ -210,6 +213,21 @@ function SessionCard({ session: s, loading, downloading, onLoad, onDownload }: {
           <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
             {s.detection_id.slice(0, 8)}
           </span>
+          {!audioAvailable && (
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: '#FF9500',
+              background: 'rgba(255,149,0,0.12)',
+              border: '1px solid rgba(255,149,0,0.4)',
+              borderRadius: 4,
+              padding: '2px 7px',
+              flexShrink: 0,
+              letterSpacing: '0.04em',
+            }}>
+              ⚠ Audio unavailable
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <Stat label="Hits" value={s.total_hits} color="var(--color-primary)" />
@@ -225,9 +243,9 @@ function SessionCard({ session: s, loading, downloading, onLoad, onDownload }: {
         <button
           className="btn btn-secondary"
           onClick={onDownload}
-          disabled={downloading || loading}
-          title="Download session zip (audio + hits JSON)"
-          style={{ fontSize: 12, padding: '8px 14px' }}
+          disabled={downloading || loading || !audioAvailable}
+          title={!audioAvailable ? 'Audio file was pruned from disk — download is unavailable' : 'Download session zip (audio + hits JSON)'}
+          style={{ fontSize: 12, padding: '8px 14px', opacity: audioAvailable ? 1 : 0.45, cursor: audioAvailable ? undefined : 'not-allowed' }}
         >
           {downloading ? <><Spinner /> Zipping…</> : '⬇ Download'}
         </button>

@@ -91,6 +91,8 @@ def list_sessions(limit: int = 50) -> list[dict]:
         result = []
         for r in rows:
             audio_row = db.query(AudioSessionRow).filter_by(audio_id=r.audio_id).first()
+            audio_path = audio_row.audio_path if audio_row else None
+            audio_available = bool(audio_path and Path(audio_path).exists())
             result.append({
                 "detection_id": r.detection_id,
                 "audio_id": r.audio_id,
@@ -99,6 +101,7 @@ def list_sessions(limit: int = 50) -> list[dict]:
                 "confidence": r.confidence,
                 "completed_at": r.completed_at,
                 "duration": audio_row.duration if audio_row else 0,
+                "audio_available": audio_available,
             })
         return result
 

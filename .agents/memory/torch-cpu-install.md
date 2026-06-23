@@ -1,38 +1,48 @@
 ---
-name: CPU-only torch install on Replit
-description: How to install PyTorch / torch-dependent packages (openunmix, etc.) without exhausting the disk quota.
+name: Persisting torch / native audio deps via uv on Replit
+description: How to install torch (CPU), openunmix, and essentia so they survive reconciliation, and how to get uv to resolve them.
 ---
 
-# Installing torch / torch-based packages in this environment
+# Installing torch / openunmix / essentia so they PERSIST
 
-Plain `pip install torch` (or any package that depends on it, e.g. `openunmix`)
-resolves to the **full CUDA build**: torch ~532MB plus 2GB+ of NVIDIA CUDA wheels
-(cudnn, nccl, cufft, triton, cusparselt, nvshmem, ...). This blows the per-user
-disk quota and fails with `OSError: [Errno 122] Disk quota exceeded` even though
-the overlay filesystem looks mostly empty (the quota is separate from `df`).
+## The persistence trap (most important)
+`pip install ...` packages live in `.pythonlibs` but are NOT in `pyproject.toml` /
+`uv.lock`. After a task merges, the platform runs reconciliation (`uv sync`) which
+**prunes everything not in the lock**. So pip-installed `torch`, `openunmix`,
+`essentia` silently vanish on the next merge and the engine quietly falls back
+(HPSS-only + librosa onsets) instead of the real 2-stage pipeline.
 
-**Rule:** always install the CPU-only build first, then the dependent package:
+**Rule:** anything the engine needs at runtime MUST be a uv dependency in
+`pyproject.toml` and present in `uv.lock`. Verify after any merge with
+`python3 -c "import torch, openunmix, essentia"`.
 
-```
-pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio
-pip install --no-cache-dir openunmix   # reuses the already-installed CPU torch
-```
+## CPU torch, not CUDA
+Plain `pip install torch` pulls the full CUDA build (~2GB of nvidia-* wheels) and
+can hit a disk quota that `df` doesn't show. `pyproject.toml` defines an explicit
+`pytorch-cpu` index and routes `torch*` / `torchaudio` to it via `[tool.uv.sources]`,
+so uv pulls torch ~190MB CPU wheels (`torch==2.x+cpu`). Keep that routing.
 
-CPU torch is ~192MB and pulls no `nvidia-*` wheels.
+## Getting uv to actually resolve (the gotchas)
+1. **Do NOT route non-torch packages to the pytorch-cpu index.** That index is
+   `explicit = true`, so uv looks ONLY there for routed names. `openunmix` is NOT
+   hosted there → "no versions of openunmix for linux". It must resolve from PyPI.
+2. **The `installLanguagePackages` wrapper auto-re-adds `openunmix` (any
+   torch-dependent pkg) to the pytorch-cpu sources list**, which re-breaks
+   resolution every time. So for these packages, edit `pyproject.toml` by hand and
+   run **raw `uv lock` then `uv sync`** (bypasses the wrapper). uv installs into
+   `UV_PROJECT_ENVIRONMENT=.pythonlibs`, the same place the workflow's python uses.
+3. **essentia ships ONLY a `cp311` manylinux-x86_64 wheel** (e.g.
+   `essentia-2.1b6.dev1389-cp311...`) and is pre-release only. So:
+   - pin `requires-python = ">=3.11,<3.12"` (3.12 split has no essentia wheel),
+   - add `[tool.uv]` `environments = ["sys_platform == 'linux'"]` (non-linux splits
+     have no essentia/torch-cpu wheel),
+   - spec it with a pre-release lower bound, e.g. `"essentia>=2.1b6.dev1389"`,
+     or uv won't pick a pre-release.
+   Without these, uv's universal resolver fails on the 3.12 / macOS / windows
+   splits even though we only run linux+3.11.
 
-**Why:** the project does CPU inference only; the CUDA stack is dead weight and
-exceeds the quota.
-
-**How to apply:**
-- If a `pip install` dies with "Disk quota exceeded" while downloading torch/CUDA,
-  run `pip cache purge` to reclaim space, then redo with the CPU index URL above.
-- uv path: `pyproject.toml` already defines a `pytorch-cpu` explicit index and
-  routes `torch*` to it via `[tool.uv.sources]`. Do NOT add a non-torch package
-  (like `openunmix`) to that sources list — `explicit = true` makes uv look ONLY
-  on that index, where openunmix doesn't exist, so resolution fails. Let such
-  packages resolve from PyPI and only their `torch` dep routes to the CPU index.
-- uv also needs `requires-python` upper-bounded (e.g. `>=3.11,<3.13`) or it tries
-  to resolve openunmix for 3.13+, which has no wheel, and fails.
-- Open-Unmix pretrained weights (umxhq drums) download once to
-  `.cache/torch/hub/checkpoints/` (~34MB for the drums target) then load in <1s.
-  First-ever call is slow (download); budget a long timeout or pre-warm it.
+## Open-Unmix weights
+umxhq pretrained weights (drums target ~34MB) download once to
+`.cache/torch/hub/checkpoints/` then load in <1s. First-ever separation call is
+slow (download); budget a long timeout or pre-warm. The model is loaded as a
+cached singleton and offloaded via `asyncio.to_thread` so it doesn't block the loop.

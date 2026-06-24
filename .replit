@@ -54,6 +54,26 @@ router = "path"
 PORT = "23636"
 BASE_PATH = "/__mockup/"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "auth-flow"
+
+[[workflows.workflow]]
+name = "auth-flow"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python scripts/check_auth_flow.py"
+
+[workflows.workflow.metadata]
+isValidation = true
+
 [[ports]]
 localPort = 5000
 externalPort = 80

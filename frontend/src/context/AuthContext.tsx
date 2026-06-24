@@ -35,9 +35,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `https://replit.com/auth_with_replit_new?domain=${h}`
   }
 
-  function logout() {
-    // Clear the Replit auth cookie and reload so the app returns to the
-    // logged-out state.
+  async function logout() {
+    // The REPL_AUTH cookie is HttpOnly, so it must be expired server-side —
+    // clearing it from JS is a no-op. Hit the backend logout endpoint first,
+    // then clear any non-HttpOnly remnant as a fallback, and finally do a full
+    // page navigation so the proxy re-evaluates auth on the next request.
+    try {
+      await axios.post('/api/logout')
+    } catch {
+      // Ignore — we still reload below so the app reflects a logged-out state.
+    }
     document.cookie =
       'REPL_AUTH=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
     setUser(null)

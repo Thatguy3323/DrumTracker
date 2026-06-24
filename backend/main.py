@@ -95,6 +95,31 @@ async def me(user: User = Depends(get_current_user)):
     }
 
 
+@app.post("/api/logout")
+async def logout():
+    """Sign the user out by expiring the Replit auth cookie server-side.
+
+    The ``REPL_AUTH`` cookie is what the Replit proxy reads to inject the
+    ``X-Replit-User-*`` headers. It is set HttpOnly, so the browser will not let
+    client-side JavaScript delete it — clearing it via ``document.cookie`` is a
+    no-op in most browsers. Expiring it from the server (Set-Cookie with a past
+    expiry) reliably removes it, so the next request carries no auth headers and
+    re-login requires the Replit auth prompt again.
+
+    We clear the cookie across the attribute combinations the proxy may have
+    used (root path, with/without the secure + SameSite flags) so the browser is
+    guaranteed to find a match and drop it.
+    """
+    response = Response(status_code=204)
+    for kwargs in (
+        {"path": "/"},
+        {"path": "/", "secure": True, "samesite": "none"},
+        {"path": "/", "secure": True, "samesite": "lax"},
+    ):
+        response.delete_cookie("REPL_AUTH", **kwargs)
+    return response
+
+
 # ── Audio ──────────────────────────────────────────────────────────────────────
 
 @app.post("/api/audio/upload", response_model=AudioMetadata)

@@ -67,6 +67,10 @@ args = "auth-flow"
 task = "workflow.run"
 args = "detect-flow"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "export-flow"
+
 [[workflows.workflow]]
 name = "auth-flow"
 author = "agent"
@@ -85,6 +89,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python scripts/check_detect_flow.py"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "export-flow"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python scripts/check_export_flow.py"
 
 [workflows.workflow.metadata]
 isValidation = true

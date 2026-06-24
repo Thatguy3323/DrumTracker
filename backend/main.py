@@ -11,11 +11,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, FileResponse, StreamingResponse
+from fastapi.responses import Response, FileResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from models import DetectRequest, DetectionResult, DrumHit, AudioMetadata
-from auth import User, get_current_user
+from auth import User, get_current_user, test_auth_enabled, TEST_AUTH_COOKIE
 from engines.audio_engine import AudioEngine
 from engines.hit_detection_engine import HitDetectionEngine
 from engines.midi_export_engine import MidiExportEngine
@@ -117,6 +117,34 @@ async def logout():
         {"path": "/", "secure": True, "samesite": "lax"},
     ):
         response.delete_cookie("REPL_AUTH", **kwargs)
+    # Also drop the test-only seam cookie so the automated logout test returns to
+    # a genuinely logged-out state (no-op in production, where it's never set).
+    response.delete_cookie(TEST_AUTH_COOKIE, path="/")
+    response.delete_cookie(TEST_AUTH_COOKIE, path="/", secure=True, samesite="lax")
+    return response
+
+
+@app.get("/api/__test/login", include_in_schema=False)
+async def test_login(username: str = "Test User"):
+    """Test-only login seam — establishes an authenticated session for the
+    automated browser test harness, which cannot carry a real Replit
+    ``REPL_AUTH`` cookie. Returns 404 in production deployments so it can never
+    be used to bypass real auth.
+
+    Sets the fallback cookie that :func:`auth.get_current_user` recognizes and
+    redirects to ``/`` so the SPA boots straight into the authenticated shell.
+    """
+    if not test_auth_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(
+        TEST_AUTH_COOKIE,
+        username,
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
     return response
 
 

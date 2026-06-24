@@ -1,3 +1,3 @@
 - [Essentia onset detection quirks](essentia-onset.md) — Essentia Onsets needs exact sr/512 frame rate; bypass it with scipy peak-picking on the normalised HFC ODF.
 - [Drum detection RMS window](drum-rms-window.md) — Use ≤20ms RMS window for transient threshold; 50ms dilutes drum attacks with trailing silence causing false negatives.
-- [Persisting torch/openunmix/essentia via uv](torch-cpu-install.md) — pip deps get pruned on merge; make them uv deps. essentia=cp311/linux-only; route torch→cpu index but NOT openunmix (it resolves from PyPI; the install wrapper keeps re-adding that bad route).
+- [Persisting torch/openunmix/essentia via uv](torch-cpu-install.md) — pip deps get pruned on merge; make them uv deps. essentia=cp311/linux-only; route torch→cpu index but NOT openunmix; the install wrapper keeps re-adding that bad route, so post-merge.sh sed-strips it each merge.

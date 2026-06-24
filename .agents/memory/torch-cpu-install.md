@@ -41,6 +41,16 @@ so uv pulls torch ~190MB CPU wheels (`torch==2.x+cpu`). Keep that routing.
    Without these, uv's universal resolver fails on the 3.12 / macOS / windows
    splits even though we only run linux+3.11.
 
+## Durable defense: strip the bad route in the post-merge script
+The wrapper keeps re-adding `openunmix = [{ index = "pytorch-cpu" ... }]` to
+`[tool.uv.sources]` inside task-agent environments, so it rides along into merges
+and breaks reconciliation (`uv sync` → "no openunmix>=1.3.0 for linux"). Removing
+it once on main is NOT enough — it comes back on the next merge. The reliable fix
+is in `scripts/post-merge.sh`: run `sed -i '/^openunmix = \[{/d' pyproject.toml`
+BEFORE `uv sync`. That line only matches the source route (the real dependency is a
+quoted `"openunmix>=1.3.0"` in `[project].dependencies`), so every merge reconciles
+cleanly no matter what a task agent's install wrapper did.
+
 ## Open-Unmix weights
 umxhq pretrained weights (drums target ~34MB) download once to
 `.cache/torch/hub/checkpoints/` then load in <1s. First-ever separation call is

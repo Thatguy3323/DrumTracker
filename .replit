@@ -63,6 +63,10 @@ author = "agent"
 task = "workflow.run"
 args = "auth-flow"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "detect-flow"
+
 [[workflows.workflow]]
 name = "auth-flow"
 author = "agent"
@@ -70,6 +74,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python scripts/check_auth_flow.py"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "detect-flow"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python scripts/check_detect_flow.py"
 
 [workflows.workflow.metadata]
 isValidation = true

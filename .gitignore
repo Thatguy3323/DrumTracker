@@ -1,0 +1,4 @@
+# Runtime audio upload artifacts — regenerated at runtime and by the
+# CI-style flow checks (scripts/check_*_flow.py). Never commit these.
+backend/uploads/*
+!backend/uploads/.gitkeep

@@ -300,6 +300,19 @@ class HitDetectionEngine:
         _log.info("Stage 1 drum isolation: %s",
                   "Open-Unmix" if used_umx else "HPSS-only (fallback)")
 
+        # Open-Unmix returns a drum stem that is much quieter than the original
+        # mix.  The per-onset loudness gate (and velocity scaling) compares the
+        # stem's RMS against a threshold derived directly from the user's dB
+        # setting, which was tuned for the original mix.  Without re-levelling,
+        # nearly every onset falls below the gate and detection returns zero
+        # hits.  Peak-match the stem back to the original mix so the threshold
+        # semantics stay intact while preserving the stem's relative dynamics.
+        if used_umx:
+            mix_peak  = float(np.max(np.abs(y)))
+            stem_peak = float(np.max(np.abs(y_det)))
+            if stem_peak > 1e-9 and mix_peak > 1e-9:
+                y_det = (y_det * (mix_peak / stem_peak)).astype(np.float32)
+
         # ===== STAGE 2: proprietary detection on the isolated stem =====
         # 1. HPSS — strip any residual tonal bleed so timing sees transients
         _, y_perc = librosa.effects.hpss(y_det)

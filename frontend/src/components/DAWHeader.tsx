@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import type { TabId } from '../App'
 
 const TABS: { id: TabId; label: string }[] = [
@@ -17,6 +18,7 @@ interface Props {
 
 export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: Props) {
   const { audioMeta, detectionResult, conversionJobs } = useApp()
+  const { user, logout } = useAuth()
   const runningJobs = conversionJobs.filter(j => j.status === 'running')
 
   return (
@@ -125,6 +127,57 @@ export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: P
         >
           ◷ HISTORY
         </button>
+
+        {user && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            paddingLeft: 10, marginLeft: 2,
+            borderLeft: '1px solid var(--border)',
+          }}>
+            {user.profile_image ? (
+              <img
+                src={user.profile_image}
+                alt={user.name}
+                style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  objectFit: 'cover', flexShrink: 0,
+                  border: '1px solid var(--border)',
+                }}
+              />
+            ) : (
+              <div style={{
+                width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--color-primary)', color: '#0b0d10',
+                fontSize: 11, fontWeight: 700,
+              }}>
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)',
+              maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {user.name}
+            </span>
+            <button
+              onClick={logout}
+              title="Log out"
+              style={{
+                display: 'flex', alignItems: 'center',
+                padding: '4px 9px',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-muted)',
+                fontSize: 10, fontWeight: 600, letterSpacing: '0.07em',
+                cursor: 'pointer',
+              }}
+            >
+              LOG OUT
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )

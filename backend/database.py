@@ -1,14 +1,21 @@
 import json
+import os
 from pathlib import Path
 from sqlalchemy import create_engine, Column, String, Float, Integer, Text, DateTime
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from datetime import datetime
 
-DB_PATH = Path(__file__).parent / "drumtracker.db"
 UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+# PostgreSQL via Replit-managed database (DATABASE_URL injected by the platform).
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -20,6 +27,7 @@ class AudioSessionRow(Base):
     __tablename__ = "audio_sessions"
 
     audio_id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
     file_name = Column(String, nullable=False)
     sample_rate = Column(Integer, nullable=False)
     channels = Column(Integer, nullable=False)
@@ -34,6 +42,7 @@ class DetectionSessionRow(Base):
     __tablename__ = "detection_sessions"
 
     detection_id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
     audio_id = Column(String, nullable=False)
     total_hits = Column(Integer, nullable=False)
     hits_by_type_json = Column(Text, nullable=False, default="{}")
@@ -48,10 +57,11 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
 
-def save_audio_session(meta: dict, audio_path: str | None = None):
+def save_audio_session(meta: dict, user_id: str, audio_path: str | None = None):
     with SessionLocal() as db:
         row = AudioSessionRow(
             audio_id=meta["audio_id"],
+            user_id=user_id,
             file_name=meta["file_name"],
             sample_rate=meta["sample_rate"],
             channels=meta["channels"],
@@ -64,10 +74,11 @@ def save_audio_session(meta: dict, audio_path: str | None = None):
         db.commit()
 
 
-def save_detection_session(result: dict):
+def save_detection_session(result: dict, user_id: str):
     with SessionLocal() as db:
         row = DetectionSessionRow(
             detection_id=result["detection_id"],
+            user_id=user_id,
             audio_id=result["audio_id"],
             total_hits=result["total_hits"],
             hits_by_type_json=json.dumps(result.get("hits_by_type", {})),
@@ -80,17 +91,22 @@ def save_detection_session(result: dict):
         db.commit()
 
 
-def list_sessions(limit: int = 50) -> list[dict]:
+def list_sessions(user_id: str, limit: int = 50) -> list[dict]:
     with SessionLocal() as db:
         rows = (
             db.query(DetectionSessionRow)
+            .filter(DetectionSessionRow.user_id == user_id)
             .order_by(DetectionSessionRow.created_at.desc())
             .limit(limit)
             .all()
         )
         result = []
         for r in rows:
-            audio_row = db.query(AudioSessionRow).filter_by(audio_id=r.audio_id).first()
+            audio_row = (
+                db.query(AudioSessionRow)
+                .filter_by(audio_id=r.audio_id, user_id=user_id)
+                .first()
+            )
             audio_path = audio_row.audio_path if audio_row else None
             audio_available = bool(audio_path and Path(audio_path).exists())
             result.append({
@@ -107,9 +123,13 @@ def list_sessions(limit: int = 50) -> list[dict]:
         return result
 
 
-def load_audio_session(audio_id: str) -> dict | None:
+def load_audio_session(audio_id: str, user_id: str) -> dict | None:
     with SessionLocal() as db:
-        row = db.query(AudioSessionRow).filter_by(audio_id=audio_id).first()
+        row = (
+            db.query(AudioSessionRow)
+            .filter_by(audio_id=audio_id, user_id=user_id)
+            .first()
+        )
         if not row:
             return None
         return {
@@ -125,7 +145,7 @@ def load_audio_session(audio_id: str) -> dict | None:
 
 
 def list_audio_ids_in_db() -> set[str]:
-    """Return the set of all audio_ids currently tracked in the database."""
+    """Return the set of all audio_ids currently tracked in the database (all users)."""
     with SessionLocal() as db:
         rows = db.query(AudioSessionRow.audio_id).all()
         return {r.audio_id for r in rows}
@@ -147,10 +167,12 @@ def cleanup_orphaned_uploads(
       - detection_sessions rows whose audio_id no longer exists in
         audio_sessions are deleted (cascade cleanup).
 
+    This is a global maintenance task and intentionally operates across all
+    users.
+
     Returns (orphaned_files, old_files, pruned_audio_rows, pruned_detection_rows).
     """
     import time
-    from datetime import timezone
 
     known_ids = list_audio_ids_in_db()
     now = time.time()
@@ -219,9 +241,13 @@ def cleanup_orphaned_uploads(
     return orphaned, old, pruned_audio, pruned_detections
 
 
-def load_detection_session(detection_id: str) -> dict | None:
+def load_detection_session(detection_id: str, user_id: str) -> dict | None:
     with SessionLocal() as db:
-        row = db.query(DetectionSessionRow).filter_by(detection_id=detection_id).first()
+        row = (
+            db.query(DetectionSessionRow)
+            .filter_by(detection_id=detection_id, user_id=user_id)
+            .first()
+        )
         if not row:
             return None
         return {

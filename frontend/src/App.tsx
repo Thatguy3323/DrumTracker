@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import DAWHeader from './components/DAWHeader'
 import DetectView from './views/DetectView'
 import MapView from './views/MapView'
@@ -7,6 +8,7 @@ import ExportView from './views/ExportView'
 import KitManagerView from './views/KitManagerView'
 import SessionsModal from './views/SessionsModal'
 import SplashScreen from './components/SplashScreen'
+import LoginScreen from './components/LoginScreen'
 
 export type TabId = 'detect' | 'map' | 'export' | 'kits'
 
@@ -16,10 +18,39 @@ export default function App() {
   return (
     <>
       {!splashDone && <SplashScreen onDone={() => setSplashDone(true)} />}
-      <AppProvider>
-        <AppShell />
-      </AppProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </>
+  )
+}
+
+function AuthGate() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', width: '100vw', background: 'var(--bg-primary)',
+        color: 'var(--text-muted)', fontSize: 12, letterSpacing: '0.08em',
+      }}>
+        <span style={{
+          display: 'inline-block', width: 14, height: 14, marginRight: 10,
+          border: '2px solid rgba(255,255,255,0.15)', borderTopColor: 'var(--color-primary)',
+          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+        }} />
+        LOADING…
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen />
+
+  return (
+    <AppProvider>
+      <AppShell />
+    </AppProvider>
   )
 }
 

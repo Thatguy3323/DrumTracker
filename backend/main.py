@@ -9,12 +9,13 @@ from datetime import datetime
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from models import DetectRequest, DetectionResult, DrumHit, AudioMetadata
+from auth import User, get_current_user
 from engines.audio_engine import AudioEngine
 from engines.hit_detection_engine import HitDetectionEngine
 from engines.midi_export_engine import MidiExportEngine
@@ -83,11 +84,22 @@ async def startup():
     asyncio.create_task(_schedule_cleanup())
 
 
+# ── Auth ───────────────────────────────────────────────────────────────────────
+
+@app.get("/api/me")
+async def me(user: User = Depends(get_current_user)):
+    return {
+        "id": user.id,
+        "name": user.name,
+        "profile_image": user.profile_image,
+    }
+
+
 # ── Audio ──────────────────────────────────────────────────────────────────────
 
 @app.post("/api/audio/upload", response_model=AudioMetadata)
 @app.post("/api/audio/load",   response_model=AudioMetadata)
-async def upload_audio(file: UploadFile = File(...)):
+async def upload_audio(file: UploadFile = File(...), user: User = Depends(get_current_user)):
     content = await file.read()
     try:
         meta = await audio_engine.load_from_bytes(content, file.filename)
@@ -101,18 +113,21 @@ async def upload_audio(file: UploadFile = File(...)):
     with open(audio_path, "wb") as f:
         f.write(content)
 
-    save_audio_session(meta, audio_path=audio_path)
+    save_audio_session(meta, user_id=user.id, audio_path=audio_path)
     asyncio.create_task(_schedule_cleanup())
     return audio_meta
 
 
 @app.get("/api/audio/{audio_id}/waveform")
-async def get_waveform(audio_id: str, points: int = 200):
+async def get_waveform(audio_id: str, points: int = 200, user: User = Depends(get_current_user)):
+    # Ensure the audio belongs to this user before serving its waveform.
+    if not load_audio_session(audio_id, user_id=user.id):
+        raise HTTPException(status_code=404, detail="Audio ID not found.")
     # If not in engine cache, try to restore from disk
     try:
         peaks = audio_engine.get_waveform_peaks(audio_id, points)
     except ValueError:
-        restored = await _restore_audio(audio_id)
+        restored = await _restore_audio(audio_id, user_id=user.id)
         if not restored:
             raise HTTPException(status_code=404, detail="Audio ID not found.")
         peaks = audio_engine.get_waveform_peaks(audio_id, points)
@@ -122,11 +137,13 @@ async def get_waveform(audio_id: str, points: int = 200):
 # ── Hit Detection ──────────────────────────────────────────────────────────────
 
 @app.post("/api/detection/detect", response_model=DetectionResult)
-async def detect_hits(req: DetectRequest):
+async def detect_hits(req: DetectRequest, user: User = Depends(get_current_user)):
+    if not load_audio_session(req.audio_id, user_id=user.id):
+        raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
     try:
         y, sr = audio_engine.get_audio(req.audio_id)
     except ValueError:
-        restored = await _restore_audio(req.audio_id)
+        restored = await _restore_audio(req.audio_id, user_id=user.id)
         if not restored:
             raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
         y, sr = audio_engine.get_audio(req.audio_id)
@@ -166,13 +183,13 @@ async def detect_hits(req: DetectRequest):
         tempo_bpm=tempo_bpm,
     )
 
-    save_detection_session(result.dict())
+    save_detection_session(result.dict(), user_id=user.id)
     return result
 
 
 @app.get("/api/detection/{detection_id}", response_model=DetectionResult)
-async def get_detection(detection_id: str):
-    data = load_detection_session(detection_id)
+async def get_detection(detection_id: str, user: User = Depends(get_current_user)):
+    data = load_detection_session(detection_id, user_id=user.id)
     if not data:
         raise HTTPException(status_code=404, detail="Detection ID not found.")
     return DetectionResult(**data)
@@ -181,17 +198,17 @@ async def get_detection(detection_id: str):
 # ── Sessions ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/sessions")
-async def get_sessions(limit: int = 50):
-    return list_sessions(limit=limit)
+async def get_sessions(limit: int = 50, user: User = Depends(get_current_user)):
+    return list_sessions(user_id=user.id, limit=limit)
 
 
 @app.get("/api/sessions/{detection_id}/load")
-async def load_session(detection_id: str):
-    detection_data = load_detection_session(detection_id)
+async def load_session(detection_id: str, user: User = Depends(get_current_user)):
+    detection_data = load_detection_session(detection_id, user_id=user.id)
     if not detection_data:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    audio_data = load_audio_session(detection_data["audio_id"])
+    audio_data = load_audio_session(detection_data["audio_id"], user_id=user.id)
     if not audio_data:
         raise HTTPException(status_code=404, detail="Audio metadata not found for session.")
 
@@ -199,7 +216,7 @@ async def load_session(detection_id: str):
     try:
         audio_engine.get_audio(audio_data["audio_id"])
     except ValueError:
-        await _restore_audio(audio_data["audio_id"])
+        await _restore_audio(audio_data["audio_id"], user_id=user.id)
 
     audio_meta = {k: v for k, v in audio_data.items() if k != "audio_path"}
     detection_result = DetectionResult(**detection_data)
@@ -211,12 +228,12 @@ async def load_session(detection_id: str):
 
 
 @app.get("/api/sessions/{detection_id}/export")
-async def export_session(detection_id: str):
-    detection_data = load_detection_session(detection_id)
+async def export_session(detection_id: str, user: User = Depends(get_current_user)):
+    detection_data = load_detection_session(detection_id, user_id=user.id)
     if not detection_data:
         raise HTTPException(status_code=404, detail="Session not found.")
 
-    audio_data = load_audio_session(detection_data["audio_id"])
+    audio_data = load_audio_session(detection_data["audio_id"], user_id=user.id)
     if not audio_data:
         raise HTTPException(status_code=404, detail="Audio metadata not found for session.")
 
@@ -255,8 +272,8 @@ class ReplacementRequest(_BaseModel):
 
 
 @app.post("/api/replacement/process")
-async def process_replacement(req: ReplacementRequest):
-    data = load_detection_session(req.detection_id)
+async def process_replacement(req: ReplacementRequest, user: User = Depends(get_current_user)):
+    data = load_detection_session(req.detection_id, user_id=user.id)
     if not data:
         raise HTTPException(status_code=404, detail="Detection ID not found. Run hit detection first.")
 
@@ -265,7 +282,7 @@ async def process_replacement(req: ReplacementRequest):
     try:
         y, sr = audio_engine.get_audio(result.audio_id)
     except ValueError:
-        restored = await _restore_audio(result.audio_id)
+        restored = await _restore_audio(result.audio_id, user_id=user.id)
         if not restored:
             raise HTTPException(status_code=404, detail="Original audio not found. Please re-upload the audio file.")
         y, sr = audio_engine.get_audio(result.audio_id)
@@ -294,8 +311,8 @@ async def process_replacement(req: ReplacementRequest):
 # ── MIDI Export ────────────────────────────────────────────────────────────────
 
 @app.get("/api/export/midi/{detection_id}")
-async def export_midi(detection_id: str, tempo: int = 120):
-    data = load_detection_session(detection_id)
+async def export_midi(detection_id: str, tempo: int = 120, user: User = Depends(get_current_user)):
+    data = load_detection_session(detection_id, user_id=user.id)
     if not data:
         raise HTTPException(status_code=404, detail="Detection ID not found.")
 
@@ -323,13 +340,19 @@ class ConvertRequest(_BM2):
 
 
 @app.post("/api/convert/start")
-async def start_conversion(req: ConvertRequest):
+async def start_conversion(req: ConvertRequest, user: User = Depends(get_current_user)):
+    meta = load_audio_session(req.audio_id, user_id=user.id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
+
     try:
         y, sr = audio_engine.get_audio(req.audio_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
+        restored = await _restore_audio(req.audio_id, user_id=user.id)
+        if not restored:
+            raise HTTPException(status_code=404, detail="Audio ID not found. Upload audio first.")
+        y, sr = audio_engine.get_audio(req.audio_id)
 
-    meta = load_audio_session(req.audio_id)
     source_name = meta["file_name"] if meta else "audio"
 
     try:
@@ -342,13 +365,18 @@ async def start_conversion(req: ConvertRequest):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    # Track which user owns this conversion job so others can't read it.
+    job = conversion_engine.get_job(job_id)
+    if job is not None:
+        job["user_id"] = user.id
+
     return {"job_id": job_id, "status": "running", "format": req.target_format}
 
 
 @app.get("/api/convert/{job_id}/status")
-async def conversion_status(job_id: str):
+async def conversion_status(job_id: str, user: User = Depends(get_current_user)):
     job = conversion_engine.get_job(job_id)
-    if not job:
+    if not job or job.get("user_id") != user.id:
         raise HTTPException(status_code=404, detail="Job not found.")
     return {
         "job_id":   job["job_id"],
@@ -360,9 +388,9 @@ async def conversion_status(job_id: str):
 
 
 @app.get("/api/convert/{job_id}/download")
-async def download_conversion(job_id: str):
+async def download_conversion(job_id: str, user: User = Depends(get_current_user)):
     job = conversion_engine.get_job(job_id)
-    if not job:
+    if not job or job.get("user_id") != user.id:
         raise HTTPException(status_code=404, detail="Job not found.")
     if job["status"] != "done":
         raise HTTPException(status_code=409, detail=f"Job is {job['status']}, not done yet.")
@@ -379,7 +407,7 @@ async def download_conversion(job_id: str):
 # ── Session Import ─────────────────────────────────────────────────────────────
 
 @app.post("/api/sessions/import")
-async def import_session(file: UploadFile = File(...)):
+async def import_session(file: UploadFile = File(...), user: User = Depends(get_current_user)):
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=422, detail="File must be a .zip archive.")
 
@@ -420,7 +448,7 @@ async def import_session(file: UploadFile = File(...)):
     audio_path = str(UPLOADS_DIR / f"{new_audio_id}{Path(audio_name).suffix}")
     with open(audio_path, "wb") as f:
         f.write(audio_bytes)
-    save_audio_session(meta, audio_path=audio_path)
+    save_audio_session(meta, user_id=user.id, audio_path=audio_path)
 
     new_detection_id = str(uuid.uuid4())
     imported_at = datetime.utcnow().isoformat()
@@ -445,7 +473,7 @@ async def import_session(file: UploadFile = File(...)):
         "hits": hits_list,
         "completed_at": imported_at,
     }
-    save_detection_session(detection_payload)
+    save_detection_session(detection_payload, user_id=user.id)
 
     asyncio.create_task(_schedule_cleanup())
 
@@ -469,8 +497,8 @@ async def health():
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-async def _restore_audio(audio_id: str) -> bool:
-    audio_data = load_audio_session(audio_id)
+async def _restore_audio(audio_id: str, user_id: str) -> bool:
+    audio_data = load_audio_session(audio_id, user_id=user_id)
     if not audio_data or not audio_data.get("audio_path"):
         return False
     audio_path = audio_data["audio_path"]

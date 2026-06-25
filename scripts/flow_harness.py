@@ -28,11 +28,12 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Callable, Iterator, TextIO
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = REPO_ROOT / "backend"
@@ -88,6 +89,22 @@ class Conn:
         return status, raw, set_cookies, location, content_type_hdr
 
 
+# Per-thread output sink. When the combined runner drives flows concurrently it
+# binds each flow's output to its own buffer here so the live PASS/FAIL lines
+# don't interleave across threads; the runner then prints each buffer grouped
+# under its flow header. Defaults to stdout (the standalone, single-flow path).
+_thread_output = threading.local()
+
+
+def set_thread_output(stream: TextIO | None) -> None:
+    """Bind (or, with ``None``, unbind) the current thread's output sink."""
+    _thread_output.stream = stream
+
+
+def _out() -> TextIO:
+    return getattr(_thread_output, "stream", None) or sys.stdout
+
+
 class Checks:
     def __init__(self) -> None:
         self.failures: list[str] = []
@@ -96,10 +113,10 @@ class Checks:
     def expect(self, ok: bool, label: str, detail: str = "") -> None:
         if ok:
             self.passed += 1
-            print(f"  PASS  {label}")
+            print(f"  PASS  {label}", file=_out())
         else:
             self.failures.append(f"{label} -- {detail}")
-            print(f"  FAIL  {label} -- {detail}")
+            print(f"  FAIL  {label} -- {detail}", file=_out())
 
 
 def cookie_value(set_cookies: list[str], name: str) -> str | None:

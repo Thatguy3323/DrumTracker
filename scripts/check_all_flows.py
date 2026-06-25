@@ -14,7 +14,9 @@ scripts.
 """
 from __future__ import annotations
 
+import io
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -25,6 +27,7 @@ from flow_harness import (  # noqa: E402
     Checks,
     Conn,
     running_backend,
+    set_thread_output,
 )
 
 import check_auth_flow  # noqa: E402
@@ -33,7 +36,8 @@ import check_detect_flow  # noqa: E402
 import check_export_flow  # noqa: E402
 import check_replacement_flow  # noqa: E402
 
-# (display name, run_flow callable). Auth first (fast), then the heavier flows.
+# (display name, run_flow callable). These flows are independent and all hit the
+# same running backend, so the combined runner drives them concurrently.
 FLOWS: list[tuple[str, object]] = [
     ("AUTH", check_auth_flow.run_flow),
     ("DETECT", check_detect_flow.run_flow),
@@ -41,6 +45,23 @@ FLOWS: list[tuple[str, object]] = [
     ("REPLACEMENT", check_replacement_flow.run_flow),
     ("CONVERT", check_convert_flow.run_flow),
 ]
+
+
+def _drive_flow(name: str, run_flow, conn: Conn) -> tuple[str, Checks, str]:
+    """Run one flow against the shared backend, capturing its output.
+
+    Each flow's PASS/FAIL lines are written to a per-thread buffer (via the
+    harness's thread-local sink) so concurrent flows don't interleave their
+    output; the buffered text is returned for the runner to print grouped under
+    the flow's header.
+    """
+    buf = io.StringIO()
+    set_thread_output(buf)
+    try:
+        chk = run_flow(conn)
+    finally:
+        set_thread_output(None)
+    return name, chk, buf.getvalue()
 
 
 def main() -> int:
@@ -51,12 +72,24 @@ def main() -> int:
     results: list[tuple[str, Checks]] = []
     try:
         with running_backend() as conn:  # type: Conn
-            print("Backend healthy. Driving all flow checks against one backend:\n")
-            for name, run_flow in FLOWS:
-                print(f"== {name} flow ==")
-                chk = run_flow(conn)
-                results.append((name, chk))
-                print()
+            print(
+                "Backend healthy. Driving all flow checks concurrently against "
+                "one backend:\n"
+            )
+            with ThreadPoolExecutor(max_workers=len(FLOWS)) as pool:
+                futures = {
+                    name: pool.submit(_drive_flow, name, run_flow, conn)
+                    for name, run_flow in FLOWS
+                }
+                # Print grouped output in the stable FLOWS order so each flow's
+                # pass/fail lines are clearly attributed, regardless of the
+                # order they finish in.
+                for name, _ in FLOWS:
+                    flow_name, chk, output = futures[name].result()
+                    print(f"== {flow_name} flow ==")
+                    sys.stdout.write(output)
+                    results.append((flow_name, chk))
+                    print()
     except BackendBootError as e:
         print(f"ERROR: {e.message}")
         if e.logs:

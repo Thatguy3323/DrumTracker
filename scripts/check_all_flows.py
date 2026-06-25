@@ -19,7 +19,6 @@ import os
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -74,10 +73,24 @@ def _heavy_concurrency() -> int:
         return DEFAULT_HEAVY_CONCURRENCY
 
 
+# Real-time progress notes (heavy-slot waiting/starting) are written straight to
+# the real stdout, bypassing the per-flow buffers, so the throttling is visible
+# live instead of only in the grouped output printed after a flow finishes. The
+# lock keeps these notes — and the grouped per-flow blocks — from interleaving
+# across threads.
+_print_lock = threading.Lock()
+
+
+def _emit(msg: str) -> None:
+    """Print a real-time progress line to the real stdout, thread-safely."""
+    with _print_lock:
+        print(msg, flush=True)
+
+
 def _drive_flow(
     name: str, run_flow, conn: Conn, gate: "threading.Semaphore | None"
 ) -> tuple[str, Checks, str]:
-    """Run one flow against the shared backend, capturing its output.
+    """Run one flow against the shared backend, capturing its assertion output.
 
     Each flow's PASS/FAIL lines are written to a per-thread buffer (via the
     harness's thread-local sink) so concurrent flows don't interleave their
@@ -86,13 +99,29 @@ def _drive_flow(
 
     Heavy flows pass a ``gate`` semaphore and only start their work once a slot
     is free, bounding concurrent torch/essentia pipelines; light flows pass
-    ``None`` and run immediately.
+    ``None`` and run immediately. A queued heavy flow would otherwise sit silent
+    (its assertion output is buffered until it finishes), which looks like a hang
+    on a slow box — so it emits a real-time "waiting" / "starting" note around
+    the gate to make the throttling visible and diagnosable.
     """
     buf = io.StringIO()
     set_thread_output(buf)
     try:
-        with (gate or nullcontext()):
+        if gate is None:
             chk = run_flow(conn)
+        else:
+            # Try to grab a slot without blocking; only announce "waiting" when
+            # the flow actually has to queue behind the heavy-concurrency cap.
+            if gate.acquire(blocking=False):
+                _emit(f"  ->  {name}: starting (heavy slot free)")
+            else:
+                _emit(f"  ..  {name}: waiting for a free heavy slot ...")
+                gate.acquire()
+                _emit(f"  ->  {name}: starting (heavy slot freed up)")
+            try:
+                chk = run_flow(conn)
+            finally:
+                gate.release()
     finally:
         set_thread_output(None)
     return name, chk, buf.getvalue()
@@ -131,10 +160,12 @@ def main() -> int:
                 # order they finish in.
                 for name, _, _ in FLOWS:
                     flow_name, chk, output = futures[name].result()
-                    print(f"== {flow_name} flow ==")
-                    sys.stdout.write(output)
+                    # Print each flow's grouped block atomically so a concurrent
+                    # heavy-slot progress note can't land in the middle of it.
+                    with _print_lock:
+                        sys.stdout.write(f"== {flow_name} flow ==\n{output}\n")
+                        sys.stdout.flush()
                     results.append((flow_name, chk))
-                    print()
     except BackendBootError as e:
         print(f"ERROR: {e.message}")
         if e.logs:

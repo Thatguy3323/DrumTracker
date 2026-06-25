@@ -61,75 +61,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "auth-flow"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "detect-flow"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "export-flow"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "replacement-flow"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "convert-flow"
+args = "flows"
 
 [[workflows.workflow]]
-name = "auth-flow"
+name = "flows"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python scripts/check_auth_flow.py"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "detect-flow"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python scripts/check_detect_flow.py"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "export-flow"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python scripts/check_export_flow.py"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "replacement-flow"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python scripts/check_replacement_flow.py"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "convert-flow"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python scripts/check_convert_flow.py"
+args = "python scripts/check_all_flows.py"
 
 [workflows.workflow.metadata]
 isValidation = true

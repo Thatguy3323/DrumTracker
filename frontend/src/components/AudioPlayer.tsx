@@ -81,7 +81,7 @@ export default function AudioPlayer() {
         ref={audioRef}
         onPlay={() => { setPlaying(true); setGlobalPlaying(true) }}
         onPause={() => { setPlaying(false); setGlobalPlaying(false) }}
-        onEnded={() => { setPlaying(false); setGlobalPlaying(false); setCurrentTime(0) }}
+        onEnded={() => { setPlaying(false); setGlobalPlaying(false); setCurrentTime(0); setGlobalTime(0) }}
         onTimeUpdate={() => {
           const t = audioRef.current?.currentTime ?? 0
           setCurrentTime(t)

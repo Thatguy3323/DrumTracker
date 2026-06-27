@@ -31,8 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   function login() {
-    const h = window.location.host
-    window.location.href = `https://replit.com/auth_with_replit_new?domain=${h}`
+    // Kick off the Replit OIDC flow on the backend (same-origin in prod, proxied
+    // through Vite in dev). The backend redirects to Replit, then back to
+    // /api/callback, which opens the session and returns the SPA to '/'.
+    window.location.href = '/api/login'
   }
 
   async function logout() {

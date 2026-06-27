@@ -53,8 +53,70 @@ class DetectionSessionRow(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class UserRow(Base):
+    """Persisted profile for a user authenticated via Replit OIDC.
+
+    The primary key ``id`` is the OIDC ``sub`` claim (a stable, unique user id),
+    which is also the ``user_id`` stored on every audio/detection row, so the
+    existing per-user data filtering keeps working unchanged.
+    """
+
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True)  # OIDC "sub" claim
+    email = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    profile_image_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+
+def upsert_user_from_claims(claims: dict) -> dict:
+    """Insert or update a user row from OIDC id_token claims; return its fields.
+
+    ``claims`` is the decoded id_token. ``sub`` is required (the stable user id).
+    """
+    sub = claims.get("sub")
+    if not sub:
+        raise ValueError("OIDC claims missing required 'sub'")
+    sub = str(sub)
+    with SessionLocal() as db:
+        row = db.get(UserRow, sub)
+        if row is None:
+            row = UserRow(id=sub)
+            db.add(row)
+        row.email = claims.get("email")
+        row.first_name = claims.get("first_name")
+        row.last_name = claims.get("last_name")
+        row.profile_image_url = claims.get("profile_image_url")
+        db.commit()
+        return {
+            "id": row.id,
+            "email": row.email,
+            "first_name": row.first_name,
+            "last_name": row.last_name,
+            "profile_image_url": row.profile_image_url,
+        }
+
+
+def get_user(user_id: str) -> dict | None:
+    """Return the persisted profile for ``user_id`` (OIDC sub), or None."""
+    with SessionLocal() as db:
+        row = db.get(UserRow, user_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "email": row.email,
+            "first_name": row.first_name,
+            "last_name": row.last_name,
+            "profile_image_url": row.profile_image_url,
+        }
 
 
 def save_audio_session(meta: dict, user_id: str, audio_path: str | None = None):

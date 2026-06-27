@@ -2,3 +2,4 @@
 - [Drum detection RMS window](drum-rms-window.md) — Use ≤20ms RMS window for transient threshold; 50ms dilutes drum attacks with trailing silence causing false negatives.
 - [Persisting torch/openunmix/essentia via uv](torch-cpu-install.md) — pip deps get pruned on merge; make them uv deps. essentia=cp311/linux-only; route torch→cpu index but NOT openunmix (it resolves from PyPI; the install wrapper keeps re-adding that bad route, so post-merge.sh sed-strips it each merge).
 - [Header-based Replit auth testing](replit-header-auth-testing.md) — runTest browser starts logged-OUT; legacy header auth has no programmatic login (testReplitAuth is OIDC-only), so the logged-in→logout path can't be automated.
+- [Replit Auth (OIDC) on FastAPI](replit-oidc-fastapi.md) — official blueprint is Flask; on FastAPI use Authlib+SessionMiddleware. redirect_uri must be env-derived (Vite changeOrigin masks Host); edge rewrites session cookie to SameSite=None.

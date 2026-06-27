@@ -9,10 +9,12 @@ from datetime import datetime
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth, OAuthError
 
 from models import DetectRequest, DetectionResult, DrumHit, AudioMetadata
 from auth import User, get_current_user, test_auth_enabled, TEST_AUTH_COOKIE
@@ -24,7 +26,7 @@ from engines.conversion_engine import ConversionEngine
 from database import (
     init_db, save_audio_session, save_detection_session,
     list_sessions, load_audio_session, load_detection_session,
-    cleanup_orphaned_uploads,
+    cleanup_orphaned_uploads, upsert_user_from_claims,
     UPLOADS_DIR,
 )
 
@@ -38,6 +40,55 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Signed, HttpOnly session cookie that carries the logged-in user's OIDC id.
+# SESSION_SECRET is injected by the platform in both dev and production.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ["SESSION_SECRET"],
+    same_site="lax",     # sent on the top-level provider redirect back to /api/callback
+    https_only=True,     # Replit serves everything over HTTPS
+)
+
+# ── Replit OIDC client (Authlib) ────────────────────────────────────────────────
+# "Log in with Replit" via OpenID Connect. The Replit blueprint ships a Flask
+# implementation; this is the FastAPI-native equivalent. Public client (no
+# secret) using PKCE; we only need authentication, so we never persist the
+# access/refresh tokens — the user's stable ``sub`` lives in the session cookie.
+OIDC_ISSUER = os.environ.get("ISSUER_URL", "https://replit.com/oidc").rstrip("/")
+
+oauth = OAuth()
+oauth.register(
+    name="replit",
+    client_id=os.environ["REPL_ID"],
+    server_metadata_url=f"{OIDC_ISSUER}/.well-known/openid-configuration",
+    client_kwargs={
+        "scope": "openid profile email",
+        "code_challenge_method": "S256",       # PKCE
+        "token_endpoint_auth_method": "none",  # public client, no secret
+    },
+)
+
+
+def _oidc_redirect_uri() -> str:
+    """Build the OIDC callback URL from the platform domain.
+
+    The Vite dev proxy uses ``changeOrigin`` (the backend sees ``Host:
+    localhost:8080``), so the request Host is unreliable for constructing a
+    public redirect URI. Derive it from the platform-provided domain instead:
+    the first of ``REPLIT_DOMAINS`` (set in deployments) or ``REPLIT_DEV_DOMAIN``
+    (set in development).
+    """
+    domains = os.environ.get("REPLIT_DOMAINS", "").strip()
+    domain = domains.split(",")[0].strip() if domains else os.environ.get("REPLIT_DEV_DOMAIN", "").strip()
+    if not domain:
+        raise HTTPException(
+            status_code=500,
+            detail="No REPLIT_DOMAINS/REPLIT_DEV_DOMAIN configured for OIDC redirect.",
+        )
+    domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
+    return f"https://{domain}/api/callback"
+
 
 audio_engine = AudioEngine()
 hit_engine = HitDetectionEngine()
@@ -95,21 +146,54 @@ async def me(user: User = Depends(get_current_user)):
     }
 
 
-@app.post("/api/logout")
-async def logout():
-    """Sign the user out by expiring the Replit auth cookie server-side.
+@app.get("/api/login", include_in_schema=False)
+async def login(request: Request):
+    """Start the Replit OIDC login flow.
 
-    The ``REPL_AUTH`` cookie is what the Replit proxy reads to inject the
-    ``X-Replit-User-*`` headers. It is set HttpOnly, so the browser will not let
-    client-side JavaScript delete it — clearing it via ``document.cookie`` is a
-    no-op in most browsers. Expiring it from the server (Set-Cookie with a past
-    expiry) reliably removes it, so the next request carries no auth headers and
-    re-login requires the Replit auth prompt again.
-
-    We clear the cookie across the attribute combinations the proxy may have
-    used (root path, with/without the secure + SameSite flags) so the browser is
-    guaranteed to find a match and drop it.
+    Clears any pre-login session (defence against session fixation) and redirects
+    the browser to Replit's authorization endpoint. Authlib generates and stashes
+    the PKCE verifier, ``state``, and ``nonce`` in the session for the callback.
     """
+    request.session.clear()
+    redirect_uri = _oidc_redirect_uri()
+    return await oauth.replit.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/api/callback", include_in_schema=False)
+async def auth_callback(request: Request):
+    """OIDC redirect target: exchange the code, persist the user, open a session."""
+    try:
+        token = await oauth.replit.authorize_access_token(request)
+    except OAuthError:
+        # State/PKCE mismatch, user denied consent, etc. — bounce to the SPA,
+        # which will show the login screen again.
+        return RedirectResponse(url="/?auth_error=1", status_code=302)
+
+    claims = token.get("userinfo") or {}
+    if not claims.get("sub"):
+        return RedirectResponse(url="/?auth_error=1", status_code=302)
+
+    profile = upsert_user_from_claims(dict(claims))
+
+    # Rotate the session before storing identity (session-fixation defence): drop
+    # the temporary OIDC handshake state, then write the authenticated user id.
+    request.session.clear()
+    request.session["user_id"] = profile["id"]
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.post("/api/logout")
+async def logout(request: Request):
+    """Sign the user out by clearing the server-side session and auth cookies.
+
+    The OIDC identity lives in the signed ``SessionMiddleware`` cookie, so the
+    authoritative logout step is ``request.session.clear()`` (the middleware then
+    emits a Set-Cookie that empties it). We additionally expire the legacy
+    ``REPL_AUTH`` proxy cookie and the test-only ``dt_test_user`` seam cookie
+    across the attribute combinations they may have been set with, so the browser
+    is guaranteed to drop them and the next request is unauthenticated.
+    """
+    request.session.clear()
     response = Response(status_code=204)
     for kwargs in (
         {"path": "/"},

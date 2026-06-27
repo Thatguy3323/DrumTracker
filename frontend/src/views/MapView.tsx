@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 
 const DRUM_COLORS: Record<string, string> = {
@@ -40,6 +40,16 @@ export default function MapView() {
   const [resolution, setResolution] = useState('1/16')
   const [swing, setSwing] = useState(0)
   const [zoom, setZoom] = useState(1)
+  const [highlightedHitId, setHighlightedHitId] = useState<string | null>(null)
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+  const rowRefsMap = useRef<Map<string, HTMLTableRowElement>>(new Map())
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    }
+  }, [])
 
   if (!detectionResult) {
     return (
@@ -71,6 +81,17 @@ export default function MapView() {
     const rect = svg.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
     seekRef.current?.(ratio * duration)
+  }
+
+  function handleHitClick(hit: typeof resolvedHits[0]) {
+    seekRef.current?.(hit.timestamp)
+    const row = rowRefsMap.current.get(hit.id)
+    if (row && tableContainerRef.current) {
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    setHighlightedHitId(hit.id)
+    highlightTimerRef.current = setTimeout(() => setHighlightedHitId(null), 1200)
   }
 
   const totalHits = detectionResult.total_hits
@@ -157,6 +178,7 @@ export default function MapView() {
           currentTime={currentTime}
           hits={resolvedHits}
           onSeek={t => seekRef.current?.(t)}
+          onHitClick={handleHitClick}
         />
       )}
 
@@ -278,7 +300,7 @@ export default function MapView() {
           }}>
             HIT TABLE — {detectionResult.hits.length} EVENTS
           </div>
-          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+          <div ref={tableContainerRef} style={{ maxHeight: 200, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-panel)', position: 'sticky', top: 0 }}>
@@ -293,10 +315,21 @@ export default function MapView() {
               <tbody>
                 {resolvedHits.map((hit, i) => {
                   const color = DRUM_COLORS[hit.drum_type] ?? '#888'
+                  const isHighlighted = highlightedHitId === hit.id
                   return (
                     <tr
                       key={hit.id}
-                      style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+                      ref={el => {
+                        if (el) rowRefsMap.current.set(hit.id, el)
+                        else rowRefsMap.current.delete(hit.id)
+                      }}
+                      style={{
+                        borderTop: '1px solid var(--border)',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s ease',
+                        background: isHighlighted ? color + '28' : 'transparent',
+                        outline: isHighlighted ? `1px solid ${color}55` : 'none',
+                      }}
                       onClick={() => seekRef.current?.(hit.timestamp)}
                     >
                       <td className="mono" style={{ padding: '5px 12px', fontSize: 11, color: 'var(--text-muted)' }}>{i + 1}</td>
@@ -339,16 +372,32 @@ export default function MapView() {
 /* ═══════════════════════════════════════════════════════════════════════════
    WAVEFORM STRIP
 ═══════════════════════════════════════════════════════════════════════════ */
+interface WaveformHit {
+  id: string
+  timestamp: number
+  drum_type: string
+  confidence: number
+}
+
+interface TooltipState {
+  hit: WaveformHit
+  x: number
+  y: number
+}
+
 function WaveformStrip({
-  waveformPeaks, duration, currentTime, hits, onSeek,
+  waveformPeaks, duration, currentTime, hits, onSeek, onHitClick,
 }: {
   waveformPeaks: number[]
   duration: number
   currentTime: number
-  hits: { timestamp: number; drum_type: string; confidence: number }[]
+  hits: WaveformHit[]
   onSeek: (t: number) => void
+  onHitClick: (hit: WaveformHit) => void
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const W = 1000, H = 48
   const mid = H / 2
   const progress = duration > 0 ? currentTime / duration : 0
@@ -360,13 +409,34 @@ function WaveformStrip({
     onSeek(ratio * duration)
   }
 
+  function handleHitMouseEnter(e: React.MouseEvent, hit: WaveformHit) {
+    const containerRect = containerRef.current?.getBoundingClientRect()
+    if (!containerRect) return
+    const x = e.clientX - containerRect.left
+    const y = e.clientY - containerRect.top
+    setTooltip({ hit, x, y })
+  }
+
+  function handleHitMouseLeave() {
+    setTooltip(null)
+  }
+
+  function handleHitClick(e: React.MouseEvent, hit: WaveformHit) {
+    e.stopPropagation()
+    setTooltip(null)
+    onHitClick(hit)
+  }
+
   return (
-    <div style={{
-      flexShrink: 0,
-      borderBottom: '1px solid var(--border)',
-      background: 'var(--bg-panel)',
-      position: 'relative',
-    }}>
+    <div
+      ref={containerRef}
+      style={{
+        flexShrink: 0,
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-panel)',
+        position: 'relative',
+      }}
+    >
       <svg
         ref={svgRef}
         width="100%"
@@ -399,16 +469,36 @@ function WaveformStrip({
         {/* Center line */}
         <line x1={0} y1={mid} x2={W} y2={mid} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
 
-        {/* Hit markers */}
+        {/* Hit markers — visual lines */}
         {duration > 0 && hits.map((hit, i) => {
           const x = (hit.timestamp / duration) * W
           const color = DRUM_COLORS[hit.drum_type] ?? '#fff'
           const alpha = 0.4 + hit.confidence * 0.5
           return (
             <line
-              key={i}
+              key={`vis-${i}`}
               x1={x} y1={3} x2={x} y2={H - 3}
               stroke={color} strokeWidth={1.2} opacity={alpha}
+              style={{ pointerEvents: 'none' }}
+            />
+          )
+        })}
+
+        {/* Hit markers — wide invisible hit targets (rendered on top) */}
+        {duration > 0 && hits.map((hit, i) => {
+          const x = (hit.timestamp / duration) * W
+          return (
+            <rect
+              key={`target-${i}`}
+              x={x - 6}
+              y={0}
+              width={12}
+              height={H}
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={e => handleHitMouseEnter(e, hit)}
+              onMouseLeave={handleHitMouseLeave}
+              onClick={e => handleHitClick(e, hit)}
             />
           )
         })}
@@ -419,6 +509,7 @@ function WaveformStrip({
             x={progress * W - 1} y={0}
             width={2} height={H}
             fill="rgba(255,255,255,0.85)"
+            style={{ pointerEvents: 'none' }}
           />
         )}
       </svg>
@@ -431,6 +522,38 @@ function WaveformStrip({
       }}>
         {currentTime.toFixed(2)}s / {duration.toFixed(2)}s
       </div>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(tooltip.x + 10, (containerRef.current?.offsetWidth ?? 300) - 130),
+            top: tooltip.y > H / 2 ? tooltip.y - 60 : tooltip.y + 12,
+            background: 'rgba(10,12,16,0.95)',
+            border: `1px solid ${DRUM_COLORS[tooltip.hit.drum_type] ?? '#444'}`,
+            borderRadius: 5,
+            padding: '6px 9px',
+            pointerEvents: 'none',
+            zIndex: 50,
+            minWidth: 110,
+          }}
+        >
+          <div style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+            color: DRUM_COLORS[tooltip.hit.drum_type] ?? '#fff',
+            textTransform: 'uppercase', marginBottom: 3,
+          }}>
+            {DRUM_LABELS[tooltip.hit.drum_type] ?? tooltip.hit.drum_type}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+            {tooltip.hit.timestamp.toFixed(3)}s
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+            conf {(tooltip.hit.confidence * 100).toFixed(0)}%
+          </div>
+        </div>
+      )}
     </div>
   )
 }

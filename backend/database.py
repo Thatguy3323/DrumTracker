@@ -146,7 +146,9 @@ def save_detection_session(result: dict, user_id: str):
             hits_by_type_json=json.dumps(result.get("hits_by_type", {})),
             confidence=result["confidence"],
             processing_time=result["processing_time"],
-            hits_json=json.dumps([h if isinstance(h, dict) else h.dict() for h in result.get("hits", [])]),
+            hits_json=json.dumps(
+                [h if isinstance(h, dict) else h.dict() for h in result.get("hits", [])]
+            ),
             completed_at=result.get("completed_at", ""),
         )
         db.merge(row)
@@ -171,17 +173,21 @@ def list_sessions(user_id: str, limit: int = 50) -> list[dict]:
             )
             audio_path = audio_row.audio_path if audio_row else None
             audio_available = bool(audio_path and Path(audio_path).exists())
-            result.append({
-                "detection_id": r.detection_id,
-                "audio_id": r.audio_id,
-                "file_name": audio_row.file_name if audio_row else "Unknown",
-                "total_hits": r.total_hits,
-                "confidence": r.confidence,
-                "completed_at": r.completed_at,
-                "duration": audio_row.duration if audio_row else 0,
-                "audio_available": audio_available,
-                "created_at": audio_row.created_at.isoformat() if audio_row and audio_row.created_at else None,
-            })
+            result.append(
+                {
+                    "detection_id": r.detection_id,
+                    "audio_id": r.audio_id,
+                    "file_name": audio_row.file_name if audio_row else "Unknown",
+                    "total_hits": r.total_hits,
+                    "confidence": r.confidence,
+                    "completed_at": r.completed_at,
+                    "duration": audio_row.duration if audio_row else 0,
+                    "audio_available": audio_available,
+                    "created_at": audio_row.created_at.isoformat()
+                    if audio_row and audio_row.created_at
+                    else None,
+                }
+            )
         return result
 
 

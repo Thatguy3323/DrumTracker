@@ -377,6 +377,7 @@ interface WaveformHit {
   timestamp: number
   drum_type: string
   confidence: number
+  velocity: number
 }
 
 interface TooltipState {

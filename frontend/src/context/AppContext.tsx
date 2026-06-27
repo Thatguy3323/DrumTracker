@@ -55,6 +55,8 @@ interface AppState {
   updateConversionJob: (job_id: string, patch: Partial<ConversionJob>) => void
   currentTime: number
   setCurrentTime: (t: number) => void
+  isPlaying: boolean
+  setIsPlaying: (v: boolean) => void
   seekRef: MutableRefObject<((t: number) => void) | null>
 }
 
@@ -68,6 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [audioObjectUrl, _setAudioObjectUrl] = useState<string | null>(null)
   const [conversionJobs, setConversionJobs] = useState<ConversionJob[]>([])
   const [currentTime, setCurrentTime] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
   const seekRef = useRef<((t: number) => void) | null>(null)
   const prevUrlRef = useRef<string | null>(null)
 
@@ -96,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       audioObjectUrl, setAudioObjectUrl,
       conversionJobs, addConversionJob, updateConversionJob,
       currentTime, setCurrentTime,
+      isPlaying, setIsPlaying,
       seekRef,
     }}>
       {children}

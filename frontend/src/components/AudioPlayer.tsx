@@ -10,7 +10,7 @@ function fmt(s: number) {
 }
 
 export default function AudioPlayer() {
-  const { audioMeta, audioObjectUrl, waveformPeaks, setCurrentTime: setGlobalTime, seekRef } = useApp()
+  const { audioMeta, audioObjectUrl, waveformPeaks, setCurrentTime: setGlobalTime, setIsPlaying: setGlobalPlaying, seekRef } = useApp()
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying]       = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -37,10 +37,11 @@ export default function AudioPlayer() {
     el.src = audioObjectUrl
     el.load()
     setPlaying(false)
+    setGlobalPlaying(false)
     setCurrentTime(0)
     setGlobalTime(0)
     setDuration(0)
-  }, [audioObjectUrl, setGlobalTime])
+  }, [audioObjectUrl, setGlobalTime, setGlobalPlaying])
 
   if (!audioObjectUrl || !audioMeta) return null
 
@@ -78,9 +79,9 @@ export default function AudioPlayer() {
     }}>
       <audio
         ref={audioRef}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => { setPlaying(false); setCurrentTime(0) }}
+        onPlay={() => { setPlaying(true); setGlobalPlaying(true) }}
+        onPause={() => { setPlaying(false); setGlobalPlaying(false) }}
+        onEnded={() => { setPlaying(false); setGlobalPlaying(false); setCurrentTime(0) }}
         onTimeUpdate={() => {
           const t = audioRef.current?.currentTime ?? 0
           setCurrentTime(t)

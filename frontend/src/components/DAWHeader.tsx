@@ -16,8 +16,15 @@ interface Props {
   onSessionsClick: () => void
 }
 
+function fmtTime(s: number) {
+  if (!isFinite(s)) return '0:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
+
 export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: Props) {
-  const { audioMeta, detectionResult, conversionJobs } = useApp()
+  const { audioMeta, detectionResult, conversionJobs, isPlaying, currentTime } = useApp()
   const { user, logout } = useAuth()
   const runningJobs = conversionJobs.filter(j => j.status === 'running')
 
@@ -108,6 +115,31 @@ export default function DAWHeader({ activeTab, onTabChange, onSessionsClick }: P
             }} />
             {runningJobs.length} converting
           </Pill>
+        )}
+
+        {audioMeta && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '3px 10px',
+            borderRadius: 20,
+            background: isPlaying ? 'rgba(0,255,127,0.08)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${isPlaying ? 'rgba(0,255,127,0.3)' : 'var(--border)'}`,
+            fontSize: 10, fontWeight: 600,
+            color: isPlaying ? 'var(--color-tertiary)' : 'var(--text-muted)',
+            transition: 'color 0.2s, background 0.2s, border-color 0.2s',
+            flexShrink: 0,
+          }}>
+            {isPlaying ? (
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'var(--color-tertiary)', flexShrink: 0,
+                boxShadow: '0 0 6px rgba(0,255,127,0.6)',
+              }} />
+            ) : (
+              <span style={{ fontSize: 8, lineHeight: 1 }}>⏸</span>
+            )}
+            <span className="mono">{fmtTime(currentTime)}</span>
+          </div>
         )}
 
         <button

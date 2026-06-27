@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 
 const DRUM_COLORS: Record<string, string> = {
@@ -36,7 +36,7 @@ function resolveType(raw: string): string {
 }
 
 export default function MapView() {
-  const { audioMeta, detectionResult, currentTime, seekRef } = useApp()
+  const { audioMeta, detectionResult, currentTime, seekRef, waveformPeaks } = useApp()
   const [resolution, setResolution] = useState('1/16')
   const [swing, setSwing] = useState(0)
   const [zoom, setZoom] = useState(1)
@@ -149,6 +149,17 @@ export default function MapView() {
         </div>
       </div>
 
+      {/* ── Waveform strip ─────────────────────────── */}
+      {waveformPeaks.length > 0 && (
+        <WaveformStrip
+          waveformPeaks={waveformPeaks}
+          duration={duration}
+          currentTime={currentTime}
+          hits={resolvedHits}
+          onSeek={t => seekRef.current?.(t)}
+        />
+      )}
+
       {/* ── Grid area ──────────────────────────────── */}
       <div style={{ flex: 1, overflow: 'auto' }}>
         <div style={{ display: 'flex', minHeight: H + 32 }}>
@@ -257,7 +268,7 @@ export default function MapView() {
           </div>
         </div>
 
-        {/* ── Hit table ──────────────────────────────── */}
+        {/* ── Hit table ───────────────────────────────── */}
         <div style={{ margin: '16px 16px 0', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
           <div style={{
             padding: '7px 14px',
@@ -320,6 +331,105 @@ export default function MapView() {
             </table>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WAVEFORM STRIP
+═══════════════════════════════════════════════════════════════════════════ */
+function WaveformStrip({
+  waveformPeaks, duration, currentTime, hits, onSeek,
+}: {
+  waveformPeaks: number[]
+  duration: number
+  currentTime: number
+  hits: { timestamp: number; drum_type: string; confidence: number }[]
+  onSeek: (t: number) => void
+}) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const W = 1000, H = 48
+  const mid = H / 2
+  const progress = duration > 0 ? currentTime / duration : 0
+
+  function handleClick(e: React.MouseEvent<SVGSVGElement>) {
+    if (!svgRef.current || !duration) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    onSeek(ratio * duration)
+  }
+
+  return (
+    <div style={{
+      flexShrink: 0,
+      borderBottom: '1px solid var(--border)',
+      background: 'var(--bg-panel)',
+      position: 'relative',
+    }}>
+      <svg
+        ref={svgRef}
+        width="100%"
+        height={H}
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ display: 'block', cursor: duration > 0 ? 'crosshair' : 'default' }}
+        onClick={handleClick}
+      >
+        <rect x={0} y={0} width={W} height={H} fill="var(--bg-panel)" />
+
+        {/* Waveform bars */}
+        {waveformPeaks.map((p, i) => {
+          const bw = W / waveformPeaks.length
+          const bh = Math.max(1, p * mid * 0.82)
+          const played = i / waveformPeaks.length < progress
+          return (
+            <rect
+              key={i}
+              x={i * bw}
+              y={mid - bh}
+              width={Math.max(0.8, bw - 0.8)}
+              height={bh * 2}
+              fill={played ? 'rgba(0,229,204,0.85)' : 'rgba(0,229,204,0.2)'}
+              rx={0.5}
+            />
+          )
+        })}
+
+        {/* Center line */}
+        <line x1={0} y1={mid} x2={W} y2={mid} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
+
+        {/* Hit markers */}
+        {duration > 0 && hits.map((hit, i) => {
+          const x = (hit.timestamp / duration) * W
+          const color = DRUM_COLORS[hit.drum_type] ?? '#fff'
+          const alpha = 0.4 + hit.confidence * 0.5
+          return (
+            <line
+              key={i}
+              x1={x} y1={3} x2={x} y2={H - 3}
+              stroke={color} strokeWidth={1.2} opacity={alpha}
+            />
+          )
+        })}
+
+        {/* Playhead */}
+        {duration > 0 && (
+          <rect
+            x={progress * W - 1} y={0}
+            width={2} height={H}
+            fill="rgba(255,255,255,0.85)"
+          />
+        )}
+      </svg>
+
+      {/* Time label */}
+      <div style={{
+        position: 'absolute', right: 8, bottom: 3,
+        fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace',
+        pointerEvents: 'none',
+      }}>
+        {currentTime.toFixed(2)}s / {duration.toFixed(2)}s
       </div>
     </div>
   )

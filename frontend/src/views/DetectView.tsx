@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, DragEvent } from 'react'
 import axios from 'axios'
 import { useApp } from '../context/AppContext'
-import AudioPlayer from '../components/AudioPlayer'
 import type { TabId } from '../App'
 
 const DRUM_COLORS: Record<string, string> = {
@@ -53,8 +52,6 @@ export default function DetectView({ onNavigateToTab }: Props) {
         <QuickExportPanel />
       </div>
 
-      {/* ── Audio player ─────────────────────────────────────────────────── */}
-      <AudioPlayer />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import KitManagerView from './views/KitManagerView'
 import SessionsModal from './views/SessionsModal'
 import SplashScreen from './components/SplashScreen'
 import LoginScreen from './components/LoginScreen'
+import AudioPlayer from './components/AudioPlayer'
 
 export type TabId = 'detect' | 'map' | 'export' | 'kits'
 
@@ -77,6 +78,7 @@ function AppShell() {
         {activeTab === 'export' && <ExportView />}
         {activeTab === 'kits'   && <KitManagerView />}
       </div>
+      <AudioPlayer />
       <StatusBar />
       {sessionsOpen && (
         <SessionsModal

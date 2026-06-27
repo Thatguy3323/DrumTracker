@@ -63,6 +63,10 @@ author = "agent"
 task = "workflow.run"
 args = "flows"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "concurrency"
+
 [[workflows.workflow]]
 name = "flows"
 author = "agent"
@@ -70,6 +74,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python scripts/check_all_flows.py"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "concurrency"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python scripts/check_concurrency_cap.py"
 
 [workflows.workflow.metadata]
 isValidation = true

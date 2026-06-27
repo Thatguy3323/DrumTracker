@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
 import { useApp } from '../context/AppContext'
 import type { ConversionJob } from '../context/AppContext'
+import type { TabId } from '../App'
 
 const DRUM_COLORS: Record<string, string> = {
   kick: '#FF2244', snare: '#00C8FF', hihat: '#00FF41', tom: '#FF7A00',
@@ -24,7 +25,7 @@ const FORMATS = [
 
 const BITRATES = ['128k', '192k', '256k', '320k']
 
-export default function ExportView() {
+export default function ExportView({ onNavigateToTab }: { onNavigateToTab?: (tab: TabId) => void }) {
   const { audioMeta, detectionResult, conversionJobs, addConversionJob, updateConversionJob } = useApp()
   const [tempo, setTempo] = useState(120)
   const [midiExporting, setMidiExporting] = useState(false)
@@ -257,6 +258,24 @@ export default function ExportView() {
                 <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(0,255,65,0.08)', border: '1px solid rgba(0,255,65,0.3)', borderRadius: 'var(--radius-sm)', fontSize: 11, color: 'var(--color-primary)' }}>
                   ✓ MIDI exported. Import it into your DAW.
                 </div>
+              )}
+
+              {onNavigateToTab && (
+                <button
+                  onClick={() => onNavigateToTab('map')}
+                  style={{
+                    marginTop: 10,
+                    width: '100%', padding: '9px',
+                    background: 'transparent',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 600, fontSize: 11,
+                    cursor: 'pointer', letterSpacing: '0.04em',
+                  }}
+                >
+                  ◈ View Full Drum Map
+                </button>
               )}
 
               {/* GM reference */}

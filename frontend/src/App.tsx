@@ -75,7 +75,7 @@ function AppShell() {
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'detect' && <DetectView onNavigateToTab={setActiveTab} />}
         {activeTab === 'map'    && <MapView />}
-        {activeTab === 'export' && <ExportView />}
+        {activeTab === 'export' && <ExportView onNavigateToTab={setActiveTab} />}
         {activeTab === 'kits'   && <KitManagerView />}
       </div>
       <AudioPlayer />

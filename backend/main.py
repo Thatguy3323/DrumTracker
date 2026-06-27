@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -127,12 +127,25 @@ async def _schedule_cleanup():
         await loop.run_in_executor(None, _run_cleanup)
 
 
+async def _prune_conversions_loop():
+    """Background loop: prune stale conversion jobs and their temp files every 10 minutes."""
+    while True:
+        await asyncio.sleep(600)
+        try:
+            removed = conversion_engine.prune_stale()
+            if removed:
+                logger.info("Conversion prune: removed %d stale job(s).", removed)
+        except Exception:
+            logger.exception("Conversion prune failed.")
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
     await audio_engine.initialize()
     await hit_engine.initialize()
     asyncio.create_task(_schedule_cleanup())
+    asyncio.create_task(_prune_conversions_loop())
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
@@ -525,7 +538,11 @@ async def conversion_status(job_id: str, user: User = Depends(get_current_user))
 
 
 @app.get("/api/convert/{job_id}/download")
-async def download_conversion(job_id: str, user: User = Depends(get_current_user)):
+async def download_conversion(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+):
     job = conversion_engine.get_job(job_id)
     if not job or job.get("user_id") != user.id:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -534,10 +551,12 @@ async def download_conversion(job_id: str, user: User = Depends(get_current_user
     path = job["output_path"]
     if not Path(path).exists():
         raise HTTPException(status_code=410, detail="Output file no longer available.")
+    background_tasks.add_task(conversion_engine.cleanup_job, job_id)
     return FileResponse(
         path=path,
         media_type="application/octet-stream",
         filename=job["filename"],
+        background=background_tasks,
     )
 
 

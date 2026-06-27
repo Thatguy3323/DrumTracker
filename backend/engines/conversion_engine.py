@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 from pathlib import Path
 import tempfile
@@ -16,6 +17,8 @@ SUPPORTED_FORMATS = {
 
 TEMP_DIR = Path(tempfile.gettempdir()) / "drumtracker_conversions"
 
+JOB_TTL_SECONDS = 3600
+
 
 class ConversionEngine:
     def __init__(self):
@@ -27,6 +30,22 @@ class ConversionEngine:
 
     def list_jobs(self) -> list:
         return list(self._jobs.values())
+
+    def cleanup_job(self, job_id: str) -> None:
+        job = self._jobs.pop(job_id, None)
+        if job:
+            path = Path(job.get("output_path", ""))
+            path.unlink(missing_ok=True)
+
+    def prune_stale(self, max_age: float = JOB_TTL_SECONDS) -> int:
+        now = time.monotonic()
+        stale = [
+            jid for jid, job in list(self._jobs.items())
+            if now - job.get("created_at", now) >= max_age
+        ]
+        for jid in stale:
+            self.cleanup_job(jid)
+        return len(stale)
 
     async def start_job(
         self,
@@ -54,6 +73,7 @@ class ConversionEngine:
             "output_path": str(output_path),
             "source": source_filename,
             "error": None,
+            "created_at": time.monotonic(),
         }
 
         asyncio.create_task(
@@ -65,7 +85,6 @@ class ConversionEngine:
                    output_path: Path, fmt: dict, bitrate: str):
         tmp_wav = TEMP_DIR / f"{job_id}_src.wav"
         try:
-            # Write decoded PCM to a temp WAV for ffmpeg to read
             await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: sf.write(str(tmp_wav), y, sr, format="WAV", subtype="PCM_16"),

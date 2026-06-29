@@ -106,3 +106,6 @@ build = ["bash", "-c", "cd frontend && npm install && npm run build"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-36ab0b86-4110-4c24-99bf-468f02b11254"

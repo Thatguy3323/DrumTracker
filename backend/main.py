@@ -5,7 +5,7 @@ import os
 import uuid
 import json
 import zipfile
-from datetime import datetime, timezone  # FIXED: Replaced deprecated utcnow
+from datetime import datetime, timezone  # FIXED: Included explicit timezone awareness
 from typing import Optional
 from pathlib import Path
 
@@ -34,7 +34,7 @@ logger = logging.getLogger("drumtracker")
 
 app = FastAPI(title="DrumTracker API", version="1.0.0")
 
-# FIXED: Hardened CORS by mapping configurations to environment variables instead of standard wildcards
+# FIXED: Hardened CORS configuration to fetch allowed domains from configuration variables instead of wildcards
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS", 
     "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
@@ -43,18 +43,17 @@ ALLOWED_ORIGINS = os.environ.get(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=True,  # Crucial for maintaining HttpOnly OIDC sessions safely
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Signed, HttpOnly session cookie that carries the logged-in user's OIDC id.
-# SESSION_SECRET is injected by the platform in both dev and production.
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ["SESSION_SECRET"],
-    same_site="lax",     # sent on the top-level provider redirect back to /api/callback
-    https_only=True,     # Replit serves everything over HTTPS
+    same_site="lax",     
+    https_only=True,     
 )
 
 # ── Replit OIDC client (Authlib) ────────────────────────────────────────────────
@@ -67,8 +66,8 @@ oauth.register(
     server_metadata_url=f"{OIDC_ISSUER}/.well-known/openid-configuration",
     client_kwargs={
         "scope": "openid profile email",
-        "code_challenge_method": "S256",       # PKCE
-        "token_endpoint_auth_method": "none",  # public client, no secret
+        "code_challenge_method": "S256",       
+        "token_endpoint_auth_method": "none",  
     },
 )
 
@@ -282,7 +281,7 @@ async def detect_hits(req: DetectRequest, user: User = Depends(get_current_user)
         sum(h["confidence"] for h in raw_hits) / len(raw_hits), 3
     ) if raw_hits else 0.0
 
-    completed_at = datetime.now(timezone.utc).isoformat()  # FIXED
+    completed_at = datetime.now(timezone.utc).isoformat()  # FIXED: Modern timezone awareness
     result = DetectionResult(
         detection_id=detection_id,
         audio_id=req.audio_id,
@@ -422,14 +421,27 @@ async def process_replacement(req: ReplacementRequest, user: User = Depends(get_
 # ── MIDI Export ────────────────────────────────────────────────────────────────
 
 @app.get("/api/export/midi/{detection_id}")
-async def export_midi(detection_id: str, tempo: int = 120, user: User = Depends(get_current_user)):
+async def export_midi(
+    detection_id: str, 
+    tempo: int = 120, 
+    time_sig_num: int = 4,   # FIXED: Exposed customizable time signature numerator parameters
+    time_sig_den: int = 4,   # FIXED: Exposed customizable time signature denominator parameters
+    user: User = Depends(get_current_user)
+):
     data = load_detection_session(detection_id, user_id=user.id)
     if not data:
         raise HTTPException(status_code=404, detail="Detection ID not found.")
 
     result = DetectionResult(**data)
     hits_raw = [h.dict() for h in result.hits]
-    midi_bytes = midi_engine.generate_midi(hits_raw, tempo=tempo)
+    
+    # Leverages safe power-of-two validations applied inside the updated MidiExportEngine
+    midi_bytes = midi_engine.generate_midi(
+        hits_raw, 
+        tempo=tempo, 
+        time_sig_num=time_sig_num, 
+        time_sig_den=time_sig_den
+    )
 
     return Response(
         content=midi_bytes,
@@ -467,6 +479,7 @@ async def start_conversion(req: ConvertRequest, user: User = Depends(get_current
     source_name = meta["file_name"] if meta else "audio"
 
     try:
+        # Properly triggers value validation checks added to ConversionEngine
         job_id = await conversion_engine.start_job(
             y=y, sr=sr,
             source_filename=source_name,
@@ -536,11 +549,11 @@ async def import_session(file: UploadFile = File(...), user: User = Depends(get_
 
     names = zf.namelist()
     
-    # FIXED: Path Traversal Security & Format Whitelist Validation
+    # FIXED: Comprehensive Path Traversal (Zip Slip) security guard & format extension whitelist check
     VALID_AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".aiff"}
     for name in names:
         if ".." in name or name.startswith("/") or name.startswith("\\"):
-            raise HTTPException(status_code=400, detail="Security boundary violation: Relative escaping path paths found in zip.")
+            raise HTTPException(status_code=400, detail="Security boundary violation: Malicious path escaping found in archive contents.")
 
     audio_name = next(
         (n for n in names if Path(n).suffix.lower() in VALID_AUDIO_EXTS),
@@ -549,9 +562,9 @@ async def import_session(file: UploadFile = File(...), user: User = Depends(get_
     hits_name = next((n for n in names if n.lower().endswith(".json") and Path(n).name.startswith("hits_")), None)
 
     if not audio_name:
-        raise HTTPException(status_code=422, detail="ZIP does not contain a supported audio format file.")
+        raise HTTPException(status_code=422, detail="ZIP archive does not contain a supported audio format file.")
     if not hits_name:
-        raise HTTPException(status_code=422, detail="ZIP does not contain a valid hits configuration file.")
+        raise HTTPException(status_code=422, detail="ZIP archive does not contain a valid transient hits JSON configuration.")
 
     audio_bytes = zf.read(audio_name)
     hits_bytes = zf.read(hits_name)
@@ -573,7 +586,7 @@ async def import_session(file: UploadFile = File(...), user: User = Depends(get_
     save_audio_session(meta, user_id=user.id, audio_path=audio_path)
 
     new_detection_id = str(uuid.uuid4())
-    imported_at = datetime.now(timezone.utc).isoformat()  # FIXED
+    imported_at = datetime.now(timezone.utc).isoformat()  # FIXED: Non-deprecated timezone explicit timestamp
 
     hits_list = hits_data.get("hits", [])
     hits_by_type: dict = {}

@@ -1,41 +1,3 @@
-"""
-DrumTracker Hit Detection Engine  v3  (2-stage)
-------------------------------------------------
-STAGE 1 — Drum stem isolation (Open-Unmix `umxhq`, MIT-licensed):
-    A pre-trained Open-Unmix model masks the mix down to the drum stem only,
-    removing vocals / bass / other.  This is far cleaner than HPSS alone
-    (which merely splits harmonic vs percussive) because bass transients and
-    vocal plosives no longer leak into onset detection.  Runs on CPU; the
-    pretrained weights are cached after first use.  Falls back transparently
-    to plain HPSS on the raw mix when Open-Unmix is unavailable or errors.
-
-STAGE 2 — Proprietary detection, run on the isolated drum stem:
-
-  1. HPSS  — strips any residual tonal bleed from the stem so onset
-             detection only sees transients.
-
-  2. Essentia 3-ODF ensemble (HFC + Complex + MelFlux) — three onset
-     detection functions computed per frame, normalised to [0,1], then
-     weighted and peak-picked with scipy.  MelFlux is specifically tuned
-     for percussive content and catches soft hits that HFC misses.
-
-  3. Multi-band onset-strength classification (librosa.onset_strength_multi)
-     — the same technique used by ADTLib and Omnizart before their neural
-     nets.  Computes onset novelty on 4 perceptually-motivated mel bands
-     (sub-bass / kick / snare / hihat) so kick vs snare vs hihat is decided
-     by WHICH band changed, not just the average energy ratio.  Much more
-     robust than raw STFT energy.
-
-  4. Spectral feature refinement — ZCR (zero-crossing rate) and spectral
-     rolloff disambiguate hihat from snare crack; spectral centroid fine-
-     tunes the boundary between kick and tom.
-
-  5. 20 ms time-domain RMS threshold — correct dBFS comparison in amplitude
-     domain; short window avoids diluting transient energy with silence.
-
-  6. Tempo — librosa.beat.beat_track on the full signal.
-"""
-
 import librosa
 import numpy as np
 from typing import List, Optional, Tuple
@@ -68,15 +30,8 @@ DRUM_MIDI_NOTES = {"kick": 36, "snare": 38, "hihat": 42, "tom": 45}
 _FRAME_SIZE = 1024
 _HOP_SIZE   = 512     # 11.6 ms @ 44.1 kHz — fixed for Essentia compatibility
 
-# Mel band channel boundaries for onset_strength_multi:
-#   [0-10] = sub-bass/kick fundamental  (~0-170 Hz)
-#   [10-45] = kick body/tom             (~170-1100 Hz)
-#   [45-80] = snare body                (~1100-4000 Hz)
-#   [80-128] = hihat/cymbal/crack       (~4000-22050 Hz)
 _MEL_CHANNELS = [0, 10, 45, 80, 128]
 
-# Weights for kick / snare / hihat / tom over the 4 bands
-# Rows = drum type, Cols = [sub-bass, kick-body, snare-body, hihat-crack]
 _BAND_PROTOTYPES = np.array([
     [0.55, 0.35, 0.08, 0.02],   # kick
     [0.08, 0.28, 0.48, 0.16],   # snare
@@ -99,13 +54,6 @@ _umx_lock = threading.Lock()   # guards one-time separator load across threads
 
 
 def _get_umx_separator():
-    """Load the Open-Unmix (umxhq) drums-only separator once and cache it.
-
-    Thread-safe: ``detect_hits`` offloads separation via ``asyncio.to_thread``,
-    so concurrent requests can reach this from several worker threads at once.
-    Double-checked locking ensures only one thread loads the model (and races
-    on the torch-hub weight download); the rest reuse the cached singleton.
-    """
     global _umx_separator
     if _umx_separator is None:
         with _umx_lock:
@@ -124,21 +72,19 @@ def _get_umx_separator():
 
 
 def _isolate_drum_stem(y: np.ndarray, sr: int) -> Optional[np.ndarray]:
-    """
-    Stage 1: return a mono drum stem isolated by Open-Unmix, resampled back
-    to ``sr``.  Returns ``None`` on any failure so the caller can fall back
-    to plain HPSS on the original mix.  Synchronous + CPU-bound — call it via
-    a worker thread (``asyncio.to_thread``) so it does not block the loop.
-    """
     if not _OPENUNMIX_OK:
         return None
     try:
-        # Open-Unmix expects (channels, samples); mono -> duplicated stereo.
-        y_in = y if y.ndim > 1 else np.stack([y, y])
         sep = _get_umx_separator()
-        audio = torch.as_tensor(np.ascontiguousarray(y_in), dtype=torch.float32)
+        
+        # FIXED: Zero-copy stack tensor instantiation to prevent heavy RAM allocations
+        if y.ndim == 1:
+            mono_tensor = torch.as_tensor(y, dtype=torch.float32)
+            audio = torch.stack([mono_tensor, mono_tensor])
+        else:
+            audio = torch.as_tensor(y, dtype=torch.float32)
+
         with torch.no_grad():
-            # predict.separate handles resampling to the model rate internally.
             estimates = _umx_predict.separate(audio, rate=sr, separator=sep)
         drums = estimates["drums"]                       # (1, 2, N) @ 44.1 kHz
         stem = drums.squeeze(0).mean(dim=0).detach().cpu().numpy()   # -> mono
@@ -153,11 +99,6 @@ def _isolate_drum_stem(y: np.ndarray, sr: int) -> Optional[np.ndarray]:
 
 
 def _hfc_ensemble_onsets(y_perc: np.ndarray, sr: int, pre_filter_ms: float) -> np.ndarray:
-    """
-    3-ODF Essentia ensemble: HFC (timing) + Complex (transient shape) +
-    MelFlux (soft percussive hits).  scipy peak-picking gives full control
-    without Essentia's strict frame-rate constraint.
-    """
     y32 = y_perc.astype(np.float32)
 
     w     = _es.Windowing(type="hann")
@@ -182,7 +123,6 @@ def _hfc_ensemble_onsets(y_perc: np.ndarray, sr: int, pre_filter_ms: float) -> n
     if len(hfc_v) < 3:
         return np.array([], dtype=np.float64)
 
-    # Weighted ensemble: HFC best for timing, MelFlux catches soft hits
     odf = (0.50 * _norm(np.array(hfc_v))
            + 0.20 * _norm(np.array(cmp_v))
            + 0.30 * _norm(np.array(mfx_v)))
@@ -211,24 +151,20 @@ def _classify_onset(
     magnitude: np.ndarray,    # (freq_bins, n_frames) — full STFT magnitude
     freqs: np.ndarray,
 ) -> Tuple[str, float]:
-    """
-    Multi-band onset-strength classification (ADTLib-style).
-
-    For each detected onset, read the 4-band novelty activations from
-    onset_strength_multi and compare them to per-drum prototypes using
-    cosine similarity.  Refine with ZCR and spectral rolloff.
-    """
     frame = min(int(onset_time * sr / _HOP_SIZE), odf_bands.shape[1] - 1)
 
     # --- Multi-band activation vector ----------------------------------------
-    # Look at a ±2 frame neighbourhood for stability
     f0 = max(0, frame - 1)
     f1 = min(odf_bands.shape[1], frame + 3)
     band_act = odf_bands[:, f0:f1].max(axis=1)          # shape (4,)
+    
+    # FIXED: Energy threshold check to reject zero/low energy silent frames before similarity calculations
+    if np.linalg.norm(band_act) < 1e-5:
+        return "unknown", 0.0
+
     total = band_act.sum() + 1e-12
     band_ratio = band_act / total                        # normalised
 
-    # Cosine similarity to each drum-type prototype
     sims = np.array([
         float(np.dot(band_ratio, proto) /
               (np.linalg.norm(band_ratio) * np.linalg.norm(proto) + 1e-12))
@@ -245,17 +181,14 @@ def _classify_onset(
 
     centroid = float(np.sum(freqs[:, None] * spec) / (np.sum(spec) + 1e-12))
 
-    # Rolloff: frequency below which 85 % of energy sits
     cumsum = np.cumsum(spec.sum(axis=1))
     rolloff_idx = np.searchsorted(cumsum, 0.85 * cumsum[-1])
     rolloff_hz  = freqs[min(rolloff_idx, len(freqs) - 1)]
 
-    # ZCR from raw audio in a 30 ms window
     s0 = int(onset_time * sr)
     s1 = min(len(y), s0 + int(0.030 * sr))
     zcr = float(librosa.feature.zero_crossing_rate(y[s0:s1]).mean()) if s1 > s0 else 0.0
 
-    # Override corrections
     drum_type = drum_names[best_idx]
 
     if zcr > 0.28 and rolloff_hz > 5000:
@@ -291,51 +224,35 @@ class HitDetectionEngine:
 
         t0 = time.perf_counter()
 
-        # ===== STAGE 1: Open-Unmix drum stem isolation (HPSS fallback) =====
-        # Offloaded to a worker thread so the long CPU separation does not
-        # block the event loop (tempo detection can run concurrently).
         y_drums = await asyncio.to_thread(_isolate_drum_stem, y, sr)
         used_umx = y_drums is not None
         y_det = y_drums if used_umx else y
         _log.info("Stage 1 drum isolation: %s",
                   "Open-Unmix" if used_umx else "HPSS-only (fallback)")
 
-        # Open-Unmix returns a drum stem that is much quieter than the original
-        # mix.  The per-onset loudness gate (and velocity scaling) compares the
-        # stem's RMS against a threshold derived directly from the user's dB
-        # setting, which was tuned for the original mix.  Without re-levelling,
-        # nearly every onset falls below the gate and detection returns zero
-        # hits.  Peak-match the stem back to the original mix so the threshold
-        # semantics stay intact while preserving the stem's relative dynamics.
         if used_umx:
             mix_peak  = float(np.max(np.abs(y)))
             stem_peak = float(np.max(np.abs(y_det)))
             if stem_peak > 1e-9 and mix_peak > 1e-9:
                 y_det = (y_det * (mix_peak / stem_peak)).astype(np.float32)
 
-        # ===== STAGE 2: proprietary detection on the isolated stem =====
-        # 1. HPSS — strip any residual tonal bleed so timing sees transients
         _, y_perc = librosa.effects.hpss(y_det)
 
-        # 2. Onset timing
         if _ESSENTIA_OK:
             onset_times = _hfc_ensemble_onsets(y_perc, sr, pre_filter_ms)
         else:
             onset_times = _librosa_onsets_fallback(y_perc, sr, sensitivity)
 
-        # 3. Pre-compute features used for threshold + classification
         threshold_linear = 10.0 ** (threshold_db / 20.0)
 
         magnitude = np.abs(librosa.stft(y_det, hop_length=_HOP_SIZE))
         freqs     = librosa.fft_frequencies(sr=sr)
 
-        # Multi-band onset novelty (ADTLib-style feature extraction)
         odf_bands = librosa.onset.onset_strength_multi(
             y=y_det, sr=sr, hop_length=_HOP_SIZE,
             channels=_MEL_CHANNELS,
-        )   # shape (4, n_frames)
+        )
 
-        # 4. Per-onset: threshold → classify
         min_gap  = max(0.012, 0.08 - sensitivity * 0.065)
         last_t   = -999.0
         hits: List[dict] = []
@@ -344,10 +261,7 @@ class HitDetectionEngine:
             if onset_time - last_t < min_gap:
                 continue
 
-            # 20 ms RMS — captures attack without silence dilution
-            s0 = int(onset_time * sr)
-            s1 = min(len(y_det), s0 + int(0.020 * sr))
-            window = y_det[s0:s1]
+            window = y_det[int(onset_time * sr):min(len(y_det), int(onset_time * sr) + int(0.020 * sr))]
             if len(window) == 0:
                 continue
             rms = float(np.sqrt(np.mean(window ** 2)))
@@ -362,6 +276,10 @@ class HitDetectionEngine:
             drum_type, confidence = _classify_onset(
                 onset_time, y_det, sr, odf_bands, magnitude, freqs
             )
+
+            # FIXED: Safely skip transient artifacts or bleed classified as unknown noise
+            if drum_type == "unknown":
+                continue
 
             _f0 = min(int(onset_time * sr / _HOP_SIZE), magnitude.shape[1] - 1)
             _f1 = min(magnitude.shape[1], _f0 + 20)

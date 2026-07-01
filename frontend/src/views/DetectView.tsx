@@ -65,18 +65,35 @@ function AudioInputPanel() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  
+  // FIXED: Implemented an AbortController ref tracking block to eliminate memory leaks on quick updates
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort()
+  }, [])
 
   async function uploadFile(file: File) {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+
     setLoading(true); setError('')
     try {
       const form = new FormData()
       form.append('file', file)
-      const { data: meta } = await axios.post('/api/audio/upload', form)
+      const { data: meta } = await axios.post('/api/audio/upload', form, {
+        signal: abortControllerRef.current.signal
+      })
       setAudioMeta(meta)
       setAudioObjectUrl(URL.createObjectURL(file))
-      const { data: wf } = await axios.get(`/api/audio/${meta.audio_id}/waveform?points=220`)
+      const { data: wf } = await axios.get(`/api/audio/${meta.audio_id}/waveform?points=220`, {
+        signal: abortControllerRef.current.signal
+      })
       setWaveformPeaks(wf.peaks)
     } catch (e: any) {
+      if (axios.isCancel(e)) return
       setError(e?.response?.data?.detail ?? 'Upload failed')
     } finally { setLoading(false) }
   }
@@ -92,7 +109,6 @@ function AudioInputPanel() {
       flex: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden',
       background: 'var(--bg-panel)',
     }}>
-      {/* Header */}
       <div className="section-head">
         <span className="panel-label">AUDIO INPUT</span>
         {audioMeta && (
@@ -124,13 +140,11 @@ function AudioInputPanel() {
         )}
       </div>
 
-      {/* Body */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <input ref={fileRef} type="file" accept=".wav,.mp3,.flac,.ogg,.aiff" hidden
           onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} />
 
         {!audioMeta ? (
-          /* Drop zone */
           <div
             onClick={() => fileRef.current?.click()}
             onDragOver={e => { e.preventDefault(); setDragging(true) }}
@@ -162,7 +176,6 @@ function AudioInputPanel() {
             {error && <div style={{ fontSize: 10, color: 'var(--color-error)', marginTop: 4 }}>{error}</div>}
           </div>
         ) : (
-          /* Waveform display */
           <MiniWaveform
             waveformPeaks={waveformPeaks}
             duration={audioMeta.duration}
@@ -221,7 +234,6 @@ function MiniWaveform({
       >
         <rect x={0} y={0} width={W} height={H} fill="var(--bg-panel)" />
 
-        {/* Waveform bars */}
         {waveformPeaks.map((p, i) => {
           const bw = W / waveformPeaks.length
           const bh = Math.max(1, p * mid * 0.88)
@@ -239,10 +251,8 @@ function MiniWaveform({
           )
         })}
 
-        {/* Center line */}
         <line x1={0} y1={mid} x2={W} y2={mid} stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
 
-        {/* Hit markers */}
         {duration > 0 && hits.map((hit, i) => {
           const x = (hit.timestamp / duration) * W
           const color = DRUM_COLORS[hit.drum_type] ?? '#fff'
@@ -256,7 +266,6 @@ function MiniWaveform({
           )
         })}
 
-        {/* Playhead */}
         {duration > 0 && (
           <rect
             x={progress * W - 1} y={0}
@@ -266,7 +275,6 @@ function MiniWaveform({
         )}
       </svg>
 
-      {/* Legend row */}
       {hits.length > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12,
@@ -378,7 +386,6 @@ function DetectionControlPanel() {
           onHover={setHoveredParam}
         />
 
-        {/* Contextual help tooltip */}
         <div style={{
           minHeight: 34,
           fontSize: 9,
@@ -529,7 +536,6 @@ function DrumMappingGrid() {
   const { audioMeta, detectionResult, currentTime, seekRef } = useApp()
   const duration = audioMeta?.duration ?? 0
   const progress = duration > 0 ? currentTime / duration : 0
-  const W = 1000
   const ROW_H = 32
 
   function handleSvgClick(e: React.MouseEvent<SVGSVGElement>) {
@@ -566,9 +572,7 @@ function DrumMappingGrid() {
         </div>
       </div>
 
-      {/* Grid */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-        {/* Track labels */}
         <div style={{ width: 62, flexShrink: 0, borderRight: '1px solid var(--border)' }}>
           {DRUM_ORDER.map(type => (
             <div
@@ -593,70 +597,68 @@ function DrumMappingGrid() {
           ))}
         </div>
 
-        {/* SVG piano roll */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          {/* FIXED: Scaled to proportional timeline percentage mappings instead of static widths to maintain fidelity on ultra-wides */}
           <svg
             width="100%"
-            viewBox={`0 0 ${W} ${ROW_H * DRUM_ORDER.length}`}
-            preserveAspectRatio="none"
+            height={ROW_H * DRUM_ORDER.length}
             style={{
               display: 'block',
-              height: ROW_H * DRUM_ORDER.length,
               cursor: duration > 0 ? 'crosshair' : 'default',
+              background: 'var(--bg-primary)'
             }}
             onClick={handleSvgClick}
           >
-            {/* Row backgrounds */}
             {DRUM_ORDER.map((type, ri) => (
               <g key={type}>
                 <rect
-                  x={0} y={ri * ROW_H} width={W} height={ROW_H}
+                  x={0} y={ri * ROW_H} width="100%" height={ROW_H}
                   fill={ri % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent'}
                 />
-                <line x1={0} y1={(ri + 1) * ROW_H} x2={W} y2={(ri + 1) * ROW_H}
+                <line x1={0} y1={(ri + 1) * ROW_H} x2="100%" y2={(ri + 1) * ROW_H}
                   stroke="rgba(255,255,255,0.04)" strokeWidth={1} />
               </g>
             ))}
 
-            {/* Bar grid lines */}
             {Array.from({ length: 9 }, (_, i) => (
               <line
                 key={i}
-                x1={(i + 1) * W / 10} y1={0}
-                x2={(i + 1) * W / 10} y2={ROW_H * DRUM_ORDER.length}
+                x1={`${(i + 1) * 10}%`} y1={0}
+                x2={`${(i + 1) * 10}%`} y2={ROW_H * DRUM_ORDER.length}
                 stroke="rgba(255,255,255,0.03)" strokeWidth={1}
               />
             ))}
 
-            {/* Hits */}
             {detectionResult && duration > 0 && detectionResult.hits.map((hit, idx) => {
               const ri = DRUM_ORDER.indexOf(hit.drum_type)
               if (ri < 0) return null
-              const x = (hit.timestamp / duration) * W
+              const xPercentage = `${(hit.timestamp / duration) * 100}%`
               const y = ri * ROW_H
               const alpha = 0.45 + hit.confidence * 0.55
               const color = DRUM_COLORS[hit.drum_type]
               return (
                 <rect
                   key={idx}
-                  x={x - 2} y={y + 3}
+                  x={xPercentage}
+                  transform="translate(-2, 0)"
+                  y={y + 3}
                   width={4} height={ROW_H - 6}
                   fill={color} opacity={alpha} rx={1}
                 />
               )
             })}
 
-            {/* Playhead */}
             {duration > 0 && (
               <rect
-                x={progress * W - 1} y={0}
+                x={`${progress * 100}%`}
+                transform="translate(-1, 0)"
+                y={0}
                 width={2} height={ROW_H * DRUM_ORDER.length}
-                fill="rgba(255,255,255,0.75)"
+                fill="rgba(255,255,255,0.85)"
               />
             )}
           </svg>
 
-          {/* Empty state */}
           {!detectionResult && (
             <div style={{
               position: 'absolute', inset: 0,
@@ -670,7 +672,6 @@ function DrumMappingGrid() {
         </div>
       </div>
 
-      {/* Time axis */}
       <div style={{
         display: 'flex', justifyContent: 'space-between',
         padding: '3px 62px 3px 62px',
@@ -788,12 +789,16 @@ function DetectionFeedbackPanel() {
 
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '10px 14px', gap: 12 }}>
         {!detectionResult ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11 }}>
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-muted)', fontSize: 11,
+            pointerEvents: 'none',
+          }}>
             Detection results will appear here
           </div>
         ) : (
           <>
-            {/* Per-type stats */}
             <div style={{ flex: 1, display: 'flex', gap: 10 }}>
               {DRUM_ORDER.map(type => {
                 const count = detectionResult.hits_by_type[type] ?? 0
@@ -829,7 +834,6 @@ function DetectionFeedbackPanel() {
               })}
             </div>
 
-            {/* Overall gauge */}
             <div style={{
               width: 60, flexShrink: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', gap: 4,
@@ -963,7 +967,6 @@ function QuickExportPanel() {
   const [exported, setExported]   = useState(false)
   const [error, setError]         = useState('')
 
-  // Auto-fill tempo whenever detection produces a BPM estimate
   useEffect(() => {
     if (detectedBpm && detectedBpm > 0) {
       setTempo(Math.round(detectedBpm))
@@ -1001,7 +1004,6 @@ function QuickExportPanel() {
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '8px 14px', gap: 8 }}>
-        {/* Tempo */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
             <span className="panel-label">TEMPO</span>
@@ -1013,7 +1015,6 @@ function QuickExportPanel() {
           />
         </div>
 
-        {/* Export button */}
         <button
           onClick={exportMidi}
           disabled={exporting || !detectionResult}
@@ -1049,9 +1050,6 @@ function QuickExportPanel() {
   )
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SHARED UTILITIES
-═══════════════════════════════════════════════════════════════════════════ */
 function Spinner() {
   return (
     <span style={{

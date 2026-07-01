@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, ReactNode } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import DAWHeader from './components/DAWHeader'
@@ -13,16 +13,74 @@ import AudioPlayer from './components/AudioPlayer'
 
 export type TabId = 'detect' | 'map' | 'export' | 'kits'
 
+// Error Boundary to catch component crashes and prevent full app failure
+class ErrorBoundary extends React.Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('ErrorBoundary caught:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg-primary)',
+          color: 'var(--text-primary)',
+          fontFamily: 'Inter, sans-serif',
+          padding: 20,
+        }}>
+          <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>⚠️ Something went wrong</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20, maxWidth: 400, textAlign: 'center' }}>
+            {this.state.error?.message || 'An unexpected error occurred. Please refresh the page.'}
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '8px 16px',
+              background: 'var(--color-primary)',
+              border: 'none',
+              borderRadius: 'var(--radius)',
+              color: '#000',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Reload App
+          </button>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 export default function App() {
   const [splashDone, setSplashDone] = useState(false)
 
   return (
-    <>
+    <ErrorBoundary>
       {!splashDone && <SplashScreen onDone={() => setSplashDone(true)} />}
       <AuthProvider>
         <AuthGate />
       </AuthProvider>
-    </>
+    </ErrorBoundary>
   )
 }
 
@@ -92,16 +150,6 @@ function AppShell() {
 
 function StatusBar() {
   const { audioMeta, detectionResult } = useApp()
-  const [cpu, setCpu] = useState(0)
-  const [mem, setMem] = useState(0)
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCpu(Math.round(2 + Math.random() * 6))
-      setMem(Math.round(128 + Math.random() * 24))
-    }, 3000)
-    return () => clearInterval(id)
-  }, [])
 
   const status = detectionResult ? 'DETECTED' : audioMeta ? 'AUDIO LOADED' : 'READY'
   const statusColor = detectionResult ? '#22C55E' : audioMeta ? '#3B82F6' : 'var(--text-muted)'
@@ -136,14 +184,6 @@ function StatusBar() {
         </SCell>
       )}
       <div style={{ flex: 1 }} />
-      <SCell style={{ borderLeft: '1px solid var(--border)', gap: 5 }}>
-        <span>CPU</span>
-        <span className="mono" style={{ color: cpu > 60 ? '#F97316' : 'var(--text-secondary)', minWidth: 26 }}>{cpu}%</span>
-      </SCell>
-      <SCell style={{ borderLeft: '1px solid var(--border)', paddingRight: 12, gap: 5 }}>
-        <span>MEM</span>
-        <span className="mono" style={{ color: 'var(--text-secondary)', minWidth: 42 }}>{mem} MB</span>
-      </SCell>
     </div>
   )
 }

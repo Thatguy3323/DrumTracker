@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 
-
 function fmt(s: number) {
   if (!isFinite(s)) return '0:00'
   const m = Math.floor(s / 60)
@@ -12,10 +11,10 @@ function fmt(s: number) {
 export default function AudioPlayer() {
   const { audioMeta, audioObjectUrl, waveformPeaks, setCurrentTime: setGlobalTime, setIsPlaying: setGlobalPlaying, seekRef } = useApp()
   const audioRef = useRef<HTMLAudioElement>(null)
-  const [playing, setPlaying]       = useState(false)
+  const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration]     = useState(0)
-  const [dragging, setDragging]     = useState(false)
+  const [duration, setDuration] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const progressRef = useRef<HTMLDivElement>(null)
 
   // Register seek function in shared ref so waveform can trigger seek
@@ -42,6 +41,18 @@ export default function AudioPlayer() {
     setGlobalTime(0)
     setDuration(0)
   }, [audioObjectUrl, setGlobalTime, setGlobalPlaying])
+
+  // Fix drag state memory leak: cleanup document mouseup listener when dragging ends
+  useEffect(() => {
+    if (!dragging) return
+
+    const handleMouseUp = () => setDragging(false)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [dragging])
 
   if (!audioObjectUrl || !audioMeta) return null
 

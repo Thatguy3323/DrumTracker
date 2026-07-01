@@ -75,7 +75,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const prevUrlRef = useRef<string | null>(null)
 
   function setAudioObjectUrl(url: string | null) {
-    if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current)
+    // Safely revoke the previous object URL to prevent memory leaks
+    if (prevUrlRef.current && prevUrlRef.current !== url) {
+      try {
+        URL.revokeObjectURL(prevUrlRef.current)
+      } catch {
+        // URL already revoked or invalid, no-op
+      }
+    }
     prevUrlRef.current = url
     _setAudioObjectUrl(url)
   }

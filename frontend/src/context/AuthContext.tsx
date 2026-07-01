@@ -21,13 +21,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
+
     axios
-      .get('/api/me')
-      .then(({ data }) => { if (!cancelled) setUser(data) })
-      .catch(() => { if (!cancelled) setUser(null) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .get('/api/me', { signal: controller.signal })
+      .then(({ data }) => setUser(data))
+      .catch((err) => {
+        // Only update if not cancelled
+        if (!axios.isCancel(err)) {
+          setUser(null)
+        }
+      })
+      .finally(() => setLoading(false))
+
+    // Cleanup: abort request if component unmounts
+    return () => controller.abort()
   }, [])
 
   function login() {

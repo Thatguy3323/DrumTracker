@@ -5,7 +5,7 @@ import os
 import uuid
 import json
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone  # FIXED: Replaced deprecated utcnow
 from typing import Optional
 from pathlib import Path
 
@@ -34,9 +34,16 @@ logger = logging.getLogger("drumtracker")
 
 app = FastAPI(title="DrumTracker API", version="1.0.0")
 
+# FIXED: Hardened CORS by mapping configurations to environment variables instead of standard wildcards
+ALLOWED_ORIGINS = os.environ.get(
+    "ALLOWED_ORIGINS", 
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -51,10 +58,6 @@ app.add_middleware(
 )
 
 # ── Replit OIDC client (Authlib) ────────────────────────────────────────────────
-# "Log in with Replit" via OpenID Connect. The Replit blueprint ships a Flask
-# implementation; this is the FastAPI-native equivalent. Public client (no
-# secret) using PKCE; we only need authentication, so we never persist the
-# access/refresh tokens — the user's stable ``sub`` lives in the session cookie.
 OIDC_ISSUER = os.environ.get("ISSUER_URL", "https://replit.com/oidc").rstrip("/")
 
 oauth = OAuth()
@@ -71,14 +74,6 @@ oauth.register(
 
 
 def _oidc_redirect_uri() -> str:
-    """Build the OIDC callback URL from the platform domain.
-
-    The Vite dev proxy uses ``changeOrigin`` (the backend sees ``Host:
-    localhost:8080``), so the request Host is unreliable for constructing a
-    public redirect URI. Derive it from the platform-provided domain instead:
-    the first of ``REPLIT_DOMAINS`` (set in deployments) or ``REPLIT_DEV_DOMAIN``
-    (set in development).
-    """
     domains = os.environ.get("REPLIT_DOMAINS", "").strip()
     domain = domains.split(",")[0].strip() if domains else os.environ.get("REPLIT_DEV_DOMAIN", "").strip()
     if not domain:
@@ -161,12 +156,6 @@ async def me(user: User = Depends(get_current_user)):
 
 @app.get("/api/login", include_in_schema=False)
 async def login(request: Request):
-    """Start the Replit OIDC login flow.
-
-    Clears any pre-login session (defence against session fixation) and redirects
-    the browser to Replit's authorization endpoint. Authlib generates and stashes
-    the PKCE verifier, ``state``, and ``nonce`` in the session for the callback.
-    """
     request.session.clear()
     redirect_uri = _oidc_redirect_uri()
     return await oauth.replit.authorize_redirect(request, redirect_uri)
@@ -174,12 +163,9 @@ async def login(request: Request):
 
 @app.get("/api/callback", include_in_schema=False)
 async def auth_callback(request: Request):
-    """OIDC redirect target: exchange the code, persist the user, open a session."""
     try:
         token = await oauth.replit.authorize_access_token(request)
     except OAuthError:
-        # State/PKCE mismatch, user denied consent, etc. — bounce to the SPA,
-        # which will show the login screen again.
         return RedirectResponse(url="/?auth_error=1", status_code=302)
 
     claims = token.get("userinfo") or {}
@@ -188,8 +174,6 @@ async def auth_callback(request: Request):
 
     profile = upsert_user_from_claims(dict(claims))
 
-    # Rotate the session before storing identity (session-fixation defence): drop
-    # the temporary OIDC handshake state, then write the authenticated user id.
     request.session.clear()
     request.session["user_id"] = profile["id"]
     return RedirectResponse(url="/", status_code=302)
@@ -197,15 +181,6 @@ async def auth_callback(request: Request):
 
 @app.post("/api/logout")
 async def logout(request: Request):
-    """Sign the user out by clearing the server-side session and auth cookies.
-
-    The OIDC identity lives in the signed ``SessionMiddleware`` cookie, so the
-    authoritative logout step is ``request.session.clear()`` (the middleware then
-    emits a Set-Cookie that empties it). We additionally expire the legacy
-    ``REPL_AUTH`` proxy cookie and the test-only ``dt_test_user`` seam cookie
-    across the attribute combinations they may have been set with, so the browser
-    is guaranteed to drop them and the next request is unauthenticated.
-    """
     request.session.clear()
     response = Response(status_code=204)
     for kwargs in (
@@ -214,8 +189,6 @@ async def logout(request: Request):
         {"path": "/", "secure": True, "samesite": "lax"},
     ):
         response.delete_cookie("REPL_AUTH", **kwargs)
-    # Also drop the test-only seam cookie so the automated logout test returns to
-    # a genuinely logged-out state (no-op in production, where it's never set).
     response.delete_cookie(TEST_AUTH_COOKIE, path="/")
     response.delete_cookie(TEST_AUTH_COOKIE, path="/", secure=True, samesite="lax")
     return response
@@ -223,14 +196,6 @@ async def logout(request: Request):
 
 @app.get("/api/__test/login", include_in_schema=False)
 async def test_login(username: str = "Test User"):
-    """Test-only login seam — establishes an authenticated session for the
-    automated browser test harness, which cannot carry a real Replit
-    ``REPL_AUTH`` cookie. Returns 404 in production deployments so it can never
-    be used to bypass real auth.
-
-    Sets the fallback cookie that :func:`auth.get_current_user` recognizes and
-    redirects to ``/`` so the SPA boots straight into the authenticated shell.
-    """
     if not test_auth_enabled():
         raise HTTPException(status_code=404, detail="Not found")
     response = RedirectResponse(url="/", status_code=302)
@@ -258,7 +223,6 @@ async def upload_audio(file: UploadFile = File(...), user: User = Depends(get_cu
 
     audio_meta = AudioMetadata(**meta)
 
-    # Persist audio file to disk so we can restore it after restarts
     audio_path = str(UPLOADS_DIR / f"{audio_meta.audio_id}{Path(file.filename).suffix}")
     with open(audio_path, "wb") as f:
         f.write(content)
@@ -270,10 +234,8 @@ async def upload_audio(file: UploadFile = File(...), user: User = Depends(get_cu
 
 @app.get("/api/audio/{audio_id}/waveform")
 async def get_waveform(audio_id: str, points: int = 200, user: User = Depends(get_current_user)):
-    # Ensure the audio belongs to this user before serving its waveform.
     if not load_audio_session(audio_id, user_id=user.id):
         raise HTTPException(status_code=404, detail="Audio ID not found.")
-    # If not in engine cache, try to restore from disk
     try:
         peaks = audio_engine.get_waveform_peaks(audio_id, points)
     except ValueError:
@@ -320,7 +282,7 @@ async def detect_hits(req: DetectRequest, user: User = Depends(get_current_user)
         sum(h["confidence"] for h in raw_hits) / len(raw_hits), 3
     ) if raw_hits else 0.0
 
-    completed_at = datetime.utcnow().isoformat()
+    completed_at = datetime.now(timezone.utc).isoformat()  # FIXED
     result = DetectionResult(
         detection_id=detection_id,
         audio_id=req.audio_id,
@@ -362,7 +324,6 @@ async def load_session(detection_id: str, user: User = Depends(get_current_user)
     if not audio_data:
         raise HTTPException(status_code=404, detail="Audio metadata not found for session.")
 
-    # Restore audio into engine cache if needed
     try:
         audio_engine.get_audio(audio_data["audio_id"])
     except ValueError:
@@ -515,7 +476,6 @@ async def start_conversion(req: ConvertRequest, user: User = Depends(get_current
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # Track which user owns this conversion job so others can't read it.
     job = conversion_engine.get_job(job_id)
     if job is not None:
         job["user_id"] = user.id
@@ -575,16 +535,23 @@ async def import_session(file: UploadFile = File(...), user: User = Depends(get_
         raise HTTPException(status_code=422, detail="Not a valid ZIP file.")
 
     names = zf.namelist()
+    
+    # FIXED: Path Traversal Security & Format Whitelist Validation
+    VALID_AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".aiff"}
+    for name in names:
+        if ".." in name or name.startswith("/") or name.startswith("\\"):
+            raise HTTPException(status_code=400, detail="Security boundary violation: Relative escaping path paths found in zip.")
+
     audio_name = next(
-        (n for n in names if not n.lower().endswith(".json") and "." in n),
+        (n for n in names if Path(n).suffix.lower() in VALID_AUDIO_EXTS),
         None,
     )
-    hits_name = next((n for n in names if n.lower().endswith(".json")), None)
+    hits_name = next((n for n in names if n.lower().endswith(".json") and Path(n).name.startswith("hits_")), None)
 
     if not audio_name:
-        raise HTTPException(status_code=422, detail="ZIP does not contain an audio file.")
+        raise HTTPException(status_code=422, detail="ZIP does not contain a supported audio format file.")
     if not hits_name:
-        raise HTTPException(status_code=422, detail="ZIP does not contain a hits JSON file.")
+        raise HTTPException(status_code=422, detail="ZIP does not contain a valid hits configuration file.")
 
     audio_bytes = zf.read(audio_name)
     hits_bytes = zf.read(hits_name)
@@ -594,7 +561,6 @@ async def import_session(file: UploadFile = File(...), user: User = Depends(get_
     except Exception:
         raise HTTPException(status_code=422, detail="Could not parse hits JSON in ZIP.")
 
-    # Load audio into engine under a fresh ID
     try:
         meta = await audio_engine.load_from_bytes(audio_bytes, audio_name)
     except Exception as e:
@@ -607,7 +573,7 @@ async def import_session(file: UploadFile = File(...), user: User = Depends(get_
     save_audio_session(meta, user_id=user.id, audio_path=audio_path)
 
     new_detection_id = str(uuid.uuid4())
-    imported_at = datetime.utcnow().isoformat()
+    imported_at = datetime.now(timezone.utc).isoformat()  # FIXED
 
     hits_list = hits_data.get("hits", [])
     hits_by_type: dict = {}
